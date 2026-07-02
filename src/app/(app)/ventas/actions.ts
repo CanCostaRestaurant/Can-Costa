@@ -17,13 +17,18 @@ export async function guardarVentaDia(
     return { ok: false, error: "No se pueden apuntar ventas de un día futuro" };
   }
 
-  await db
-    .insert(schema.ventasDia)
-    .values({ fecha, total: total.toFixed(2), origen: "manual" })
-    .onConflictDoUpdate({
-      target: schema.ventasDia.fecha,
-      set: { total: total.toFixed(2), origen: "manual" },
-    });
+  try {
+    await db
+      .insert(schema.ventasDia)
+      .values({ fecha, total: total.toFixed(2), origen: "manual" })
+      .onConflictDoUpdate({
+        target: schema.ventasDia.fecha,
+        set: { total: total.toFixed(2), origen: "manual" },
+      });
+  } catch (e) {
+    console.error("[guardarVentaDia] falló:", e instanceof Error ? e.message : e);
+    return { ok: false, error: "La base de datos no responde ahora mismo — vuelve a intentarlo en unos minutos" };
+  }
 
   revalidatePath("/ventas");
   revalidatePath("/dashboard");

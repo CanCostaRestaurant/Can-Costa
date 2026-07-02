@@ -21,6 +21,7 @@ export function getDb(): DrizzleDb | null {
     globalForDb.pgClient = postgres(process.env.DATABASE_URL, {
       max: 1,
       idle_timeout: 20,
+      connect_timeout: 10, // si Supabase no responde, fallar rápido (no colgar la función)
       prepare: false,
     });
   }

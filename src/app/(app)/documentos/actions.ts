@@ -10,62 +10,71 @@ export async function validarFactura(facturaId: string): Promise<{ ok: boolean; 
   const db = getDb();
   if (!db) return { ok: false, error: "Base de datos no configurada" };
 
-  const [factura] = await db.select().from(schema.facturas).where(eq(schema.facturas.id, facturaId));
-  if (!factura) return { ok: false, error: "Factura no encontrada" };
-  if (factura.estado !== "revisar") return { ok: false, error: "La factura no está pendiente de revisar" };
+  try {
+    const [factura] = await db.select().from(schema.facturas).where(eq(schema.facturas.id, facturaId));
+    if (!factura) return { ok: false, error: "Factura no encontrada" };
+    if (factura.estado !== "revisar") return { ok: false, error: "La factura no está pendiente de revisar" };
 
-  const lineas = await db
-    .select()
-    .from(schema.facturaLineas)
-    .where(eq(schema.facturaLineas.facturaId, facturaId));
+    const lineas = await db
+      .select()
+      .from(schema.facturaLineas)
+      .where(eq(schema.facturaLineas.facturaId, facturaId));
 
-  const fecha = factura.fecha ?? new Date().toISOString().slice(0, 10);
+    const fecha = factura.fecha ?? new Date().toISOString().slice(0, 10);
 
-  await db.transaction(async (tx) => {
-    for (const linea of lineas) {
-      if (!linea.productoId || !linea.precioUnitario) continue;
+    await db.transaction(async (tx) => {
+      for (const linea of lineas) {
+        if (!linea.productoId || !linea.precioUnitario) continue;
 
-      const [producto] = await tx
-        .select()
-        .from(schema.productos)
-        .where(eq(schema.productos.id, linea.productoId));
-      if (!producto) continue;
+        const [producto] = await tx
+          .select()
+          .from(schema.productos)
+          .where(eq(schema.productos.id, linea.productoId));
+        if (!producto) continue;
 
-      const precio = Number(linea.precioUnitario);
-      const previo = producto.ultimoPrecio ? Number(producto.ultimoPrecio) : null;
-      const variacion = previo && previo > 0 ? ((precio - previo) / previo) * 100 : null;
+        const precio = Number(linea.precioUnitario);
+        const previo = producto.ultimoPrecio ? Number(producto.ultimoPrecio) : null;
+        const variacion = previo && previo > 0 ? ((precio - previo) / previo) * 100 : null;
 
-      await tx.insert(schema.precios).values({
-        productoId: linea.productoId,
-        precio: linea.precioUnitario,
-        unidad: linea.unidad ?? producto.unidad,
-        fecha,
-        proveedorId: factura.proveedorId,
-        facturaId: factura.id,
-        lineaId: linea.id,
-      });
+        await tx.insert(schema.precios).values({
+          productoId: linea.productoId,
+          precio: linea.precioUnitario,
+          unidad: linea.unidad ?? producto.unidad,
+          fecha,
+          proveedorId: factura.proveedorId,
+          facturaId: factura.id,
+          lineaId: linea.id,
+        });
+
+        await tx
+          .update(schema.productos)
+          .set({ ultimoPrecio: linea.precioUnitario, ultimaCompra: fecha, updatedAt: new Date() })
+          .where(eq(schema.productos.id, linea.productoId));
+
+        if (variacion !== null) {
+          await tx
+            .update(schema.facturaLineas)
+            .set({ variacionPct: variacion.toFixed(2) })
+            .where(eq(schema.facturaLineas.id, linea.id));
+        }
+      }
 
       await tx
-        .update(schema.productos)
-        .set({ ultimoPrecio: linea.precioUnitario, ultimaCompra: fecha, updatedAt: new Date() })
-        .where(eq(schema.productos.id, linea.productoId));
-
-      if (variacion !== null) {
-        await tx
-          .update(schema.facturaLineas)
-          .set({ variacionPct: variacion.toFixed(2) })
-          .where(eq(schema.facturaLineas.id, linea.id));
-      }
-    }
-
-    await tx
-      .update(schema.facturas)
-      .set({ estado: "validada", updatedAt: new Date() })
-      .where(eq(schema.facturas.id, facturaId));
-  });
+        .update(schema.facturas)
+        .set({ estado: "validada", updatedAt: new Date() })
+        .where(eq(schema.facturas.id, facturaId));
+    });
+  } catch (e) {
+    console.error("[validarFactura] falló:", e instanceof Error ? e.message : e);
+    return {
+      ok: false,
+      error: "La base de datos no responde ahora mismo — vuelve a intentarlo en unos minutos",
+    };
+  }
 
   revalidatePath("/");
-  revalidatePath("/facturas");
-  revalidatePath("/precios");
+  revalidatePath("/documentos");
+  revalidatePath("/productos");
+  revalidatePath("/incidencias");
   return { ok: true };
 }

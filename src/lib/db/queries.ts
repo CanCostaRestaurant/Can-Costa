@@ -1,6 +1,7 @@
-// Capa de consultas de Can Costa. Cada función intenta leer de la BD real
-// (Drizzle) y, si aún no hay DATABASE_URL configurada, cae a los datos mock
-// para que la app siga funcionando durante el arranque.
+// Capa de consultas de Can Costa.
+// - Sin DATABASE_URL configurada → datos mock (arranque/desarrollo).
+// - Con BD pero caída (p. ej. incidencia de Supabase) → estados VACÍOS y
+//   console.error: la app degrada con elegancia en vez de devolver un 500.
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, max, sum } from "drizzle-orm";
 import { getDb, schema } from "./index";
 import {
@@ -46,155 +47,180 @@ function generarNota(variacion: number, primerMes: string, ultimaCompra: string)
   return `Precio estable. Última compra el ${ultimaCompra}.`;
 }
 
+function num(cantidad: string): string {
+  return Number(cantidad).toLocaleString("es-ES", { maximumFractionDigits: 1 });
+}
+
+function isoFecha(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function logFallo(contexto: string, e: unknown): void {
+  console.error(`[queries] ${contexto} falló:`, e instanceof Error ? e.message : e);
+}
+
+// ---------------------------------------------------------------------
+// Productos con histórico de precios
+// ---------------------------------------------------------------------
+
 export async function getProductosConHistorico(): Promise<Producto[]> {
   const db = getDb();
   if (!db) return PRODUCTOS; // sin BD configurada → datos de ejemplo
 
-  const filas = await db
-    .select({
-      id: schema.productos.id,
-      nombre: schema.productos.nombre,
-      familia: schema.productos.familia,
-      unidad: schema.productos.unidad,
-      ultimaCompra: schema.productos.ultimaCompra,
-      proveedor: schema.proveedores.nombre,
-    })
-    .from(schema.productos)
-    .leftJoin(schema.proveedores, eq(schema.productos.proveedorId, schema.proveedores.id))
-    .where(eq(schema.productos.activo, true))
-    .orderBy(asc(schema.productos.nombre));
+  try {
+    const filas = await db
+      .select({
+        id: schema.productos.id,
+        nombre: schema.productos.nombre,
+        familia: schema.productos.familia,
+        unidad: schema.productos.unidad,
+        ultimaCompra: schema.productos.ultimaCompra,
+        proveedor: schema.proveedores.nombre,
+      })
+      .from(schema.productos)
+      .leftJoin(schema.proveedores, eq(schema.productos.proveedorId, schema.proveedores.id))
+      .where(eq(schema.productos.activo, true))
+      .orderBy(asc(schema.productos.nombre));
 
-  if (filas.length === 0) return [];
+    if (filas.length === 0) return [];
 
-  const ids = filas.map((f) => f.id);
-  const puntos = await db
-    .select({
-      productoId: schema.precios.productoId,
-      precio: schema.precios.precio,
-      fecha: schema.precios.fecha,
-    })
-    .from(schema.precios)
-    .where(inArray(schema.precios.productoId, ids))
-    .orderBy(asc(schema.precios.fecha));
+    const ids = filas.map((f) => f.id);
+    const puntos = await db
+      .select({
+        productoId: schema.precios.productoId,
+        precio: schema.precios.precio,
+        fecha: schema.precios.fecha,
+      })
+      .from(schema.precios)
+      .where(inArray(schema.precios.productoId, ids))
+      .orderBy(asc(schema.precios.fecha));
 
-  // Agrupar el histórico por producto (Map, sin N+1).
-  const porProducto = new Map<string, { precio: number; fecha: string }[]>();
-  for (const p of puntos) {
-    const arr = porProducto.get(p.productoId) ?? [];
-    arr.push({ precio: Number(p.precio), fecha: p.fecha });
-    porProducto.set(p.productoId, arr);
+    // Agrupar el histórico por producto (Map, sin N+1).
+    const porProducto = new Map<string, { precio: number; fecha: string }[]>();
+    for (const p of puntos) {
+      const arr = porProducto.get(p.productoId) ?? [];
+      arr.push({ precio: Number(p.precio), fecha: p.fecha });
+      porProducto.set(p.productoId, arr);
+    }
+
+    return filas.map((f): Producto => {
+      const serie = (porProducto.get(f.id) ?? []).slice(-6);
+      const hist = serie.map((s) => s.precio);
+      const meses = serie.map((s) => mesCorto(s.fecha));
+      const ultimo = hist.at(-1) ?? 0;
+      const previo = hist.at(-2) ?? ultimo;
+      const variacion = previo > 0 ? Math.round(((ultimo - previo) / previo) * 100) : 0;
+      const ultimaCompra = fechaLegible(f.ultimaCompra ?? serie.at(-1)?.fecha ?? null);
+
+      return {
+        id: f.id,
+        nombre: f.nombre,
+        proveedor: f.proveedor ?? "—",
+        precio: precioTexto(ultimo, f.unidad),
+        ultimaCompra,
+        variacion,
+        familia: f.familia,
+        hist: hist.length ? hist : [ultimo],
+        meses: meses.length ? meses : [""],
+        nota: generarNota(variacion, meses[0] ?? "", ultimaCompra),
+      };
+    });
+  } catch (e) {
+    logFallo("getProductosConHistorico", e);
+    return [];
   }
-
-  return filas.map((f): Producto => {
-    const serie = (porProducto.get(f.id) ?? []).slice(-6);
-    const hist = serie.map((s) => s.precio);
-    const meses = serie.map((s) => mesCorto(s.fecha));
-    const ultimo = hist.at(-1) ?? 0;
-    const previo = hist.at(-2) ?? ultimo;
-    const variacion = previo > 0 ? Math.round(((ultimo - previo) / previo) * 100) : 0;
-    const ultimaCompra = fechaLegible(f.ultimaCompra ?? serie.at(-1)?.fecha ?? null);
-
-    return {
-      id: f.id,
-      nombre: f.nombre,
-      proveedor: f.proveedor ?? "—",
-      precio: precioTexto(ultimo, f.unidad),
-      ultimaCompra,
-      variacion,
-      familia: f.familia,
-      hist: hist.length ? hist : [ultimo],
-      meses: meses.length ? meses : [""],
-      nota: generarNota(variacion, meses[0] ?? "", ultimaCompra),
-    };
-  });
 }
 
 // ---------------------------------------------------------------------
 // Facturas
 // ---------------------------------------------------------------------
 
-function num(cantidad: string): string {
-  return Number(cantidad).toLocaleString("es-ES", { maximumFractionDigits: 1 });
-}
-
 export async function getFacturas(): Promise<Factura[]> {
   const db = getDb();
   if (!db) return FACTURAS;
 
-  const filas = await db
-    .select({
-      id: schema.facturas.id,
-      numero: schema.facturas.numero,
-      fecha: schema.facturas.fecha,
-      total: schema.facturas.total,
-      estado: schema.facturas.estado,
-      origen: schema.facturas.origen,
-      proveedor: schema.proveedores.nombre,
-      proveedorTexto: schema.facturas.proveedorTexto,
-    })
-    .from(schema.facturas)
-    .leftJoin(schema.proveedores, eq(schema.facturas.proveedorId, schema.proveedores.id))
-    .orderBy(desc(schema.facturas.fecha), desc(schema.facturas.createdAt));
-
-  const conteos = await db
-    .select({ facturaId: schema.facturaLineas.facturaId, n: count() })
-    .from(schema.facturaLineas)
-    .groupBy(schema.facturaLineas.facturaId);
-  const lineasPorFactura = new Map(conteos.map((c) => [c.facturaId, Number(c.n)]));
-
-  // Líneas completas solo para las facturas en bandeja (revisar).
-  const idsRevisar = filas.filter((f) => f.estado === "revisar").map((f) => f.id);
-  const detalles = new Map<string, LineaFactura[]>();
-  if (idsRevisar.length) {
-    const lineas = await db
+  try {
+    const filas = await db
       .select({
-        facturaId: schema.facturaLineas.facturaId,
-        descripcion: schema.facturaLineas.descripcion,
-        cantidad: schema.facturaLineas.cantidad,
-        unidad: schema.facturaLineas.unidad,
-        precioUnitario: schema.facturaLineas.precioUnitario,
-        total: schema.facturaLineas.total,
-        ultimoPrecio: schema.productos.ultimoPrecio,
+        id: schema.facturas.id,
+        numero: schema.facturas.numero,
+        fecha: schema.facturas.fecha,
+        total: schema.facturas.total,
+        estado: schema.facturas.estado,
+        origen: schema.facturas.origen,
+        proveedor: schema.proveedores.nombre,
+        proveedorTexto: schema.facturas.proveedorTexto,
       })
+      .from(schema.facturas)
+      .leftJoin(schema.proveedores, eq(schema.facturas.proveedorId, schema.proveedores.id))
+      .orderBy(desc(schema.facturas.fecha), desc(schema.facturas.createdAt));
+
+    const conteos = await db
+      .select({ facturaId: schema.facturaLineas.facturaId, n: count() })
       .from(schema.facturaLineas)
-      .leftJoin(schema.productos, eq(schema.facturaLineas.productoId, schema.productos.id))
-      .where(inArray(schema.facturaLineas.facturaId, idsRevisar))
-      .orderBy(asc(schema.facturaLineas.orden));
+      .groupBy(schema.facturaLineas.facturaId);
+    const lineasPorFactura = new Map(conteos.map((c) => [c.facturaId, Number(c.n)]));
 
-    for (const l of lineas) {
-      const arr = detalles.get(l.facturaId) ?? [];
-      const precio = l.precioUnitario ? Number(l.precioUnitario) : null;
-      const previo = l.ultimoPrecio ? Number(l.ultimoPrecio) : null;
-      const variacion =
-        precio !== null && previo !== null && previo > 0
-          ? Math.round(((precio - previo) / previo) * 100)
-          : undefined;
-      arr.push({
-        producto: l.descripcion,
-        cantidad: l.cantidad ? `${num(l.cantidad)} ${l.unidad ?? "ud"}` : "—",
-        precioUd: precio !== null ? `${precio.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/${l.unidad ?? "ud"}` : "—",
-        total: l.total ? Number(l.total) : 0,
-        variacion: variacion !== undefined && variacion !== 0 ? variacion : undefined,
-      });
-      detalles.set(l.facturaId, arr);
+    // Líneas completas solo para las facturas en bandeja (revisar).
+    const idsRevisar = filas.filter((f) => f.estado === "revisar").map((f) => f.id);
+    const detalles = new Map<string, LineaFactura[]>();
+    if (idsRevisar.length) {
+      const lineas = await db
+        .select({
+          facturaId: schema.facturaLineas.facturaId,
+          descripcion: schema.facturaLineas.descripcion,
+          cantidad: schema.facturaLineas.cantidad,
+          unidad: schema.facturaLineas.unidad,
+          precioUnitario: schema.facturaLineas.precioUnitario,
+          total: schema.facturaLineas.total,
+          ultimoPrecio: schema.productos.ultimoPrecio,
+        })
+        .from(schema.facturaLineas)
+        .leftJoin(schema.productos, eq(schema.facturaLineas.productoId, schema.productos.id))
+        .where(inArray(schema.facturaLineas.facturaId, idsRevisar))
+        .orderBy(asc(schema.facturaLineas.orden));
+
+      for (const l of lineas) {
+        const arr = detalles.get(l.facturaId) ?? [];
+        const precio = l.precioUnitario ? Number(l.precioUnitario) : null;
+        const previo = l.ultimoPrecio ? Number(l.ultimoPrecio) : null;
+        const variacion =
+          precio !== null && previo !== null && previo > 0
+            ? Math.round(((precio - previo) / previo) * 100)
+            : undefined;
+        arr.push({
+          producto: l.descripcion,
+          cantidad: l.cantidad ? `${num(l.cantidad)} ${l.unidad ?? "ud"}` : "—",
+          precioUd:
+            precio !== null
+              ? `${precio.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €/${l.unidad ?? "ud"}`
+              : "—",
+          total: l.total ? Number(l.total) : 0,
+          variacion: variacion !== undefined && variacion !== 0 ? variacion : undefined,
+        });
+        detalles.set(l.facturaId, arr);
+      }
     }
-  }
 
-  return filas.map((f): Factura => ({
-    id: f.id,
-    proveedor: f.proveedor ?? f.proveedorTexto ?? "Proveedor sin identificar",
-    detalle:
-      f.estado === "procesando"
-        ? "leyendo el documento…"
-        : f.numero
-          ? (f.origen === "foto" ? "albarán " : "factura ") + f.numero.replace(/^ALB-/, "")
-          : "sin número",
-    fecha: fechaLegible(f.fecha),
-    lineas: lineasPorFactura.get(f.id) ?? 0,
-    total: f.total !== null ? Number(f.total) : null,
-    estado: f.estado,
-    lineasDetalle: detalles.get(f.id),
-  }));
+    return filas.map((f): Factura => ({
+      id: f.id,
+      proveedor: f.proveedor ?? f.proveedorTexto ?? "Proveedor sin identificar",
+      detalle:
+        f.estado === "procesando"
+          ? "leyendo el documento…"
+          : f.numero
+            ? (f.origen === "foto" ? "albarán " : "factura ") + f.numero.replace(/^ALB-/, "")
+            : "sin número",
+      fecha: fechaLegible(f.fecha),
+      lineas: lineasPorFactura.get(f.id) ?? 0,
+      total: f.total !== null ? Number(f.total) : null,
+      estado: f.estado,
+      lineasDetalle: detalles.get(f.id),
+    }));
+  } catch (e) {
+    logFallo("getFacturas", e);
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -213,100 +239,6 @@ export type DashboardData = {
   ultimas: UltimaFactura[];
   semanas: SemanaCompraVenta[];
 };
-
-function isoFecha(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-// ---------------------------------------------------------------------
-// Ventas diarias
-// ---------------------------------------------------------------------
-
-export type VentaDia = {
-  id: string;
-  fecha: string; // ISO
-  fechaLegible: string;
-  diaSemana: string;
-  total: number;
-  origen: string;
-};
-
-export async function getVentas(dias = 35): Promise<VentaDia[]> {
-  const db = getDb();
-  if (!db) return [];
-
-  const desde = new Date();
-  desde.setDate(desde.getDate() - dias);
-
-  const filas = await db
-    .select()
-    .from(schema.ventasDia)
-    .where(gte(schema.ventasDia.fecha, isoFecha(desde)))
-    .orderBy(desc(schema.ventasDia.fecha));
-
-  const diaSemana = new Intl.DateTimeFormat("es-ES", { weekday: "long" });
-  return filas.map((v) => ({
-    id: v.id,
-    fecha: v.fecha,
-    fechaLegible: fechaLegible(v.fecha),
-    diaSemana: diaSemana.format(new Date(v.fecha)),
-    total: Number(v.total),
-    origen: v.origen,
-  }));
-}
-
-// ---------------------------------------------------------------------
-// Proveedores (resumen con gasto acumulado)
-// ---------------------------------------------------------------------
-
-export type ProveedorResumen = {
-  id: string;
-  nombre: string;
-  email: string | null;
-  telefono: string | null;
-  numFacturas: number;
-  gastoTotal: number;
-  ultimaCompra: string;
-};
-
-export async function getProveedoresResumen(): Promise<ProveedorResumen[]> {
-  const db = getDb();
-  if (!db) return [];
-
-  const [provs, agregados] = await Promise.all([
-    db
-      .select()
-      .from(schema.proveedores)
-      .where(eq(schema.proveedores.activo, true))
-      .orderBy(asc(schema.proveedores.nombre)),
-    db
-      .select({
-        proveedorId: schema.facturas.proveedorId,
-        n: count(),
-        suma: sum(schema.facturas.total),
-        ultima: max(schema.facturas.fecha),
-      })
-      .from(schema.facturas)
-      .where(isNotNull(schema.facturas.total))
-      .groupBy(schema.facturas.proveedorId),
-  ]);
-
-  const porProveedor = new Map(agregados.map((a) => [a.proveedorId, a]));
-  return provs
-    .map((p) => {
-      const agg = porProveedor.get(p.id);
-      return {
-        id: p.id,
-        nombre: p.nombre,
-        email: p.email,
-        telefono: p.telefono,
-        numFacturas: agg ? Number(agg.n) : 0,
-        gastoTotal: agg?.suma ? Number(agg.suma) : 0,
-        ultimaCompra: fechaLegible(agg?.ultima ?? null),
-      };
-    })
-    .sort((a, b) => b.gastoTotal - a.gastoTotal);
-}
 
 export async function getDashboardData(): Promise<DashboardData> {
   const db = getDb();
@@ -338,70 +270,184 @@ export async function getDashboardData(): Promise<DashboardData> {
     d.setDate(lunesActual.getDate() - n * 7);
     return d;
   });
-  const desde = isoFecha(lunes[0]);
-
-  const [filasCompras, filasVentas] = await Promise.all([
-    db
-      .select({ fecha: schema.facturas.fecha, total: schema.facturas.total })
-      .from(schema.facturas)
-      .where(and(gte(schema.facturas.fecha, desde), isNotNull(schema.facturas.total))),
-    db
-      .select({ fecha: schema.ventasDia.fecha, total: schema.ventasDia.total })
-      .from(schema.ventasDia)
-      .where(gte(schema.ventasDia.fecha, desde)),
-  ]);
-
-  const semanas: SemanaCompraVenta[] = lunes.map((l) => ({
+  const semanasVacias: SemanaCompraVenta[] = lunes.map((l) => ({
     etiqueta: `${l.getDate()} ${MESES_CORTOS[l.getMonth()]}`,
     compras: 0,
     ventas: 0,
   }));
-  const indice = (fecha: string | null): number | null => {
-    if (!fecha) return null;
-    const dias = Math.floor((new Date(fecha).getTime() - lunes[0].getTime()) / 86_400_000);
-    const i = Math.floor(dias / 7);
-    return i >= 0 && i < 4 ? i : null;
-  };
-  for (const f of filasCompras) {
-    const i = indice(f.fecha);
-    if (i !== null) semanas[i].compras += Number(f.total);
+
+  try {
+    const desde = isoFecha(lunes[0]);
+
+    const [filasCompras, filasVentas] = await Promise.all([
+      db
+        .select({ fecha: schema.facturas.fecha, total: schema.facturas.total })
+        .from(schema.facturas)
+        .where(and(gte(schema.facturas.fecha, desde), isNotNull(schema.facturas.total))),
+      db
+        .select({ fecha: schema.ventasDia.fecha, total: schema.ventasDia.total })
+        .from(schema.ventasDia)
+        .where(gte(schema.ventasDia.fecha, desde)),
+    ]);
+
+    const semanas = semanasVacias.map((s) => ({ ...s }));
+    const indice = (fecha: string | null): number | null => {
+      if (!fecha) return null;
+      const dias = Math.floor((new Date(fecha).getTime() - lunes[0].getTime()) / 86_400_000);
+      const i = Math.floor(dias / 7);
+      return i >= 0 && i < 4 ? i : null;
+    };
+    for (const f of filasCompras) {
+      const i = indice(f.fecha);
+      if (i !== null) semanas[i].compras += Number(f.total);
+    }
+    for (const v of filasVentas) {
+      const i = indice(v.fecha);
+      if (i !== null) semanas[i].ventas += Number(v.total);
+    }
+
+    const comprasPeriodo = semanas.reduce((acc, s) => acc + s.compras, 0);
+    const ventasPeriodo = semanas.reduce((acc, s) => acc + s.ventas, 0);
+    const foodCost = ventasPeriodo > 0 ? (comprasPeriodo / ventasPeriodo) * 100 : null;
+
+    const productos = await getProductosConHistorico();
+    const alertas = productos.filter((p) => p.variacion >= 5).sort((a, b) => b.variacion - a.variacion);
+
+    const ultimas = await db
+      .select({
+        id: schema.facturas.id,
+        proveedor: schema.proveedores.nombre,
+        estado: schema.facturas.estado,
+        total: schema.facturas.total,
+      })
+      .from(schema.facturas)
+      .leftJoin(schema.proveedores, eq(schema.facturas.proveedorId, schema.proveedores.id))
+      .where(isNotNull(schema.facturas.total))
+      .orderBy(desc(schema.facturas.fecha), desc(schema.facturas.createdAt))
+      .limit(3);
+
+    return {
+      comprasPeriodo,
+      foodCost,
+      margenBruto: foodCost !== null ? 100 - foodCost : null,
+      alertas,
+      ultimas: ultimas.map((u) => ({
+        id: u.id,
+        proveedor: u.proveedor ?? "—",
+        estado: u.estado,
+        total: Number(u.total),
+      })),
+      semanas,
+    };
+  } catch (e) {
+    logFallo("getDashboardData", e);
+    return {
+      comprasPeriodo: 0,
+      foodCost: null,
+      margenBruto: null,
+      alertas: [],
+      ultimas: [],
+      semanas: semanasVacias,
+    };
   }
-  for (const v of filasVentas) {
-    const i = indice(v.fecha);
-    if (i !== null) semanas[i].ventas += Number(v.total);
+}
+
+// ---------------------------------------------------------------------
+// Ventas diarias
+// ---------------------------------------------------------------------
+
+export type VentaDia = {
+  id: string;
+  fecha: string; // ISO
+  fechaLegible: string;
+  diaSemana: string;
+  total: number;
+  origen: string;
+};
+
+export async function getVentas(dias = 35): Promise<VentaDia[]> {
+  const db = getDb();
+  if (!db) return [];
+
+  try {
+    const desde = new Date();
+    desde.setDate(desde.getDate() - dias);
+
+    const filas = await db
+      .select()
+      .from(schema.ventasDia)
+      .where(gte(schema.ventasDia.fecha, isoFecha(desde)))
+      .orderBy(desc(schema.ventasDia.fecha));
+
+    const diaSemana = new Intl.DateTimeFormat("es-ES", { weekday: "long" });
+    return filas.map((v) => ({
+      id: v.id,
+      fecha: v.fecha,
+      fechaLegible: fechaLegible(v.fecha),
+      diaSemana: diaSemana.format(new Date(v.fecha)),
+      total: Number(v.total),
+      origen: v.origen,
+    }));
+  } catch (e) {
+    logFallo("getVentas", e);
+    return [];
   }
+}
 
-  const comprasPeriodo = semanas.reduce((acc, s) => acc + s.compras, 0);
-  const ventasPeriodo = semanas.reduce((acc, s) => acc + s.ventas, 0);
-  const foodCost = ventasPeriodo > 0 ? (comprasPeriodo / ventasPeriodo) * 100 : null;
+// ---------------------------------------------------------------------
+// Proveedores (resumen con gasto acumulado)
+// ---------------------------------------------------------------------
 
-  const productos = await getProductosConHistorico();
-  const alertas = productos.filter((p) => p.variacion >= 5).sort((a, b) => b.variacion - a.variacion);
+export type ProveedorResumen = {
+  id: string;
+  nombre: string;
+  email: string | null;
+  telefono: string | null;
+  numFacturas: number;
+  gastoTotal: number;
+  ultimaCompra: string;
+};
 
-  const ultimas = await db
-    .select({
-      id: schema.facturas.id,
-      proveedor: schema.proveedores.nombre,
-      estado: schema.facturas.estado,
-      total: schema.facturas.total,
-    })
-    .from(schema.facturas)
-    .leftJoin(schema.proveedores, eq(schema.facturas.proveedorId, schema.proveedores.id))
-    .where(isNotNull(schema.facturas.total))
-    .orderBy(desc(schema.facturas.fecha), desc(schema.facturas.createdAt))
-    .limit(3);
+export async function getProveedoresResumen(): Promise<ProveedorResumen[]> {
+  const db = getDb();
+  if (!db) return [];
 
-  return {
-    comprasPeriodo,
-    foodCost,
-    margenBruto: foodCost !== null ? 100 - foodCost : null,
-    alertas,
-    ultimas: ultimas.map((u) => ({
-      id: u.id,
-      proveedor: u.proveedor ?? "—",
-      estado: u.estado,
-      total: Number(u.total),
-    })),
-    semanas,
-  };
+  try {
+    const [provs, agregados] = await Promise.all([
+      db
+        .select()
+        .from(schema.proveedores)
+        .where(eq(schema.proveedores.activo, true))
+        .orderBy(asc(schema.proveedores.nombre)),
+      db
+        .select({
+          proveedorId: schema.facturas.proveedorId,
+          n: count(),
+          suma: sum(schema.facturas.total),
+          ultima: max(schema.facturas.fecha),
+        })
+        .from(schema.facturas)
+        .where(isNotNull(schema.facturas.total))
+        .groupBy(schema.facturas.proveedorId),
+    ]);
+
+    const porProveedor = new Map(agregados.map((a) => [a.proveedorId, a]));
+    return provs
+      .map((p) => {
+        const agg = porProveedor.get(p.id);
+        return {
+          id: p.id,
+          nombre: p.nombre,
+          email: p.email,
+          telefono: p.telefono,
+          numFacturas: agg ? Number(agg.n) : 0,
+          gastoTotal: agg?.suma ? Number(agg.suma) : 0,
+          ultimaCompra: fechaLegible(agg?.ultima ?? null),
+        };
+      })
+      .sort((a, b) => b.gastoTotal - a.gastoTotal);
+  } catch (e) {
+    logFallo("getProveedoresResumen", e);
+    return [];
+  }
 }
