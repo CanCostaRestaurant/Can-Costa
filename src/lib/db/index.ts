@@ -33,6 +33,17 @@ export function getDb(): DrizzleDb | null {
 
 export { schema };
 
+// Descarta el cliente cacheado (socket posiblemente zombi tras una incidencia
+// del pooler): la siguiente petición reconectará de cero.
+export function resetDb(): void {
+  const cliente = globalForDb.pgClient;
+  globalForDb.pgClient = undefined;
+  globalForDb.drizzleDb = undefined;
+  if (cliente) {
+    cliente.end({ timeout: 1 }).catch(() => {});
+  }
+}
+
 // Plazo duro para trabajo contra la BD: si el socket está zombi (p. ej.
 // incidencia del pooler), las queries encolan sin error y la función se
 // colgaría minutos. Con el race, a los N ms se rechaza y el llamante puede

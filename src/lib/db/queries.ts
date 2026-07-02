@@ -4,7 +4,7 @@
 //   de 8s por consulta (conPlazo) + estados VACÍOS y console.error: la app
 //   degrada con elegancia en vez de devolver un 500 o colgarse minutos.
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, max, sum } from "drizzle-orm";
-import { conPlazo, getDb, schema } from "./index";
+import { conPlazo, getDb, resetDb, schema } from "./index";
 import {
   COMPRAS_SEMANA,
   FACTURAS,
@@ -58,6 +58,9 @@ function isoFecha(d: Date): string {
 
 function logFallo(contexto: string, e: unknown): void {
   console.error(`[queries] ${contexto} falló:`, e instanceof Error ? e.message : e);
+  // El fallo puede venir de un socket zombi cacheado: reciclar para que la
+  // siguiente petición reconecte de cero.
+  resetDb();
 }
 
 // ---------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
-import { conPlazo, getDb, schema } from "@/lib/db";
+import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
 
 // Valida una factura en bandeja: vuelca sus líneas al histórico de precios,
 // actualiza el último precio de cada producto y deja la variación calculada.
@@ -70,6 +70,7 @@ export async function validarFactura(facturaId: string): Promise<{ ok: boolean; 
     );
   } catch (e) {
     console.error("[validarFactura] falló:", e instanceof Error ? e.message : e);
+    resetDb();
     return {
       ok: false,
       error: "La base de datos no responde ahora mismo — vuelve a intentarlo en unos minutos",

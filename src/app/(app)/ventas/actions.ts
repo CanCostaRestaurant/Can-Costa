@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { conPlazo, getDb, schema } from "@/lib/db";
+import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
 
 // Alta/edición de las ventas de un día (hasta que llegue el import del TPV).
 export async function guardarVentaDia(
@@ -29,6 +29,7 @@ export async function guardarVentaDia(
     );
   } catch (e) {
     console.error("[guardarVentaDia] falló:", e instanceof Error ? e.message : e);
+    resetDb();
     return { ok: false, error: "La base de datos no responde ahora mismo — vuelve a intentarlo en unos minutos" };
   }
 
