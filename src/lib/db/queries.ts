@@ -1,7 +1,7 @@
 // Capa de consultas de Can Costa. Cada función intenta leer de la BD real
 // (Drizzle) y, si aún no hay DATABASE_URL configurada, cae a los datos mock
 // para que la app siga funcionando durante el arranque.
-import { asc, count, desc, eq, gte, inArray, isNotNull, and } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, max, sum } from "drizzle-orm";
 import { getDb, schema } from "./index";
 import {
   COMPRAS_SEMANA,
@@ -216,6 +216,96 @@ export type DashboardData = {
 
 function isoFecha(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+// ---------------------------------------------------------------------
+// Ventas diarias
+// ---------------------------------------------------------------------
+
+export type VentaDia = {
+  id: string;
+  fecha: string; // ISO
+  fechaLegible: string;
+  diaSemana: string;
+  total: number;
+  origen: string;
+};
+
+export async function getVentas(dias = 35): Promise<VentaDia[]> {
+  const db = getDb();
+  if (!db) return [];
+
+  const desde = new Date();
+  desde.setDate(desde.getDate() - dias);
+
+  const filas = await db
+    .select()
+    .from(schema.ventasDia)
+    .where(gte(schema.ventasDia.fecha, isoFecha(desde)))
+    .orderBy(desc(schema.ventasDia.fecha));
+
+  const diaSemana = new Intl.DateTimeFormat("es-ES", { weekday: "long" });
+  return filas.map((v) => ({
+    id: v.id,
+    fecha: v.fecha,
+    fechaLegible: fechaLegible(v.fecha),
+    diaSemana: diaSemana.format(new Date(v.fecha)),
+    total: Number(v.total),
+    origen: v.origen,
+  }));
+}
+
+// ---------------------------------------------------------------------
+// Proveedores (resumen con gasto acumulado)
+// ---------------------------------------------------------------------
+
+export type ProveedorResumen = {
+  id: string;
+  nombre: string;
+  email: string | null;
+  telefono: string | null;
+  numFacturas: number;
+  gastoTotal: number;
+  ultimaCompra: string;
+};
+
+export async function getProveedoresResumen(): Promise<ProveedorResumen[]> {
+  const db = getDb();
+  if (!db) return [];
+
+  const [provs, agregados] = await Promise.all([
+    db
+      .select()
+      .from(schema.proveedores)
+      .where(eq(schema.proveedores.activo, true))
+      .orderBy(asc(schema.proveedores.nombre)),
+    db
+      .select({
+        proveedorId: schema.facturas.proveedorId,
+        n: count(),
+        suma: sum(schema.facturas.total),
+        ultima: max(schema.facturas.fecha),
+      })
+      .from(schema.facturas)
+      .where(isNotNull(schema.facturas.total))
+      .groupBy(schema.facturas.proveedorId),
+  ]);
+
+  const porProveedor = new Map(agregados.map((a) => [a.proveedorId, a]));
+  return provs
+    .map((p) => {
+      const agg = porProveedor.get(p.id);
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        email: p.email,
+        telefono: p.telefono,
+        numFacturas: agg ? Number(agg.n) : 0,
+        gastoTotal: agg?.suma ? Number(agg.suma) : 0,
+        ultimaCompra: fechaLegible(agg?.ultima ?? null),
+      };
+    })
+    .sort((a, b) => b.gastoTotal - a.gastoTotal);
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
