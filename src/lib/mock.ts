@@ -78,7 +78,7 @@ export type Producto = {
   precio: string;
   ultimaCompra: string;
   variacion: number;
-  familia: "pescado" | "carne" | "fruta-verdura" | "seco";
+  familia: "pescado" | "carne" | "fruta-verdura" | "seco" | "bebida" | "otros";
   hist: number[];
   meses: string[];
   nota: string;

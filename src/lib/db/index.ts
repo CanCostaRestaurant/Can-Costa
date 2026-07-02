@@ -1,19 +1,22 @@
 // Cliente Drizzle conectado a la Postgres de Supabase (driver postgres-js).
-// Session Pooler (5432), max:1, prepare:false. Singleton vía globalThis.
+// Transaction pooler (6543), max:1, prepare:false. Singleton vía globalThis.
+//
+// Inicialización PEREZOSA: mientras no haya DATABASE_URL, getDb() devuelve
+// null en vez de lanzar. Así las pantallas pueden caer a datos mock sin
+// romper el build ni el deploy hasta que la variable esté configurada.
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
+type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
+
 const globalForDb = globalThis as unknown as {
   pgClient: ReturnType<typeof postgres> | undefined;
+  drizzleDb: DrizzleDb | undefined;
 };
 
-function getClient() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error(
-      "DATABASE_URL no configurada. Copia .env.local.example a .env.local.",
-    );
-  }
+export function getDb(): DrizzleDb | null {
+  if (!process.env.DATABASE_URL) return null;
   if (!globalForDb.pgClient) {
     globalForDb.pgClient = postgres(process.env.DATABASE_URL, {
       max: 1,
@@ -21,8 +24,10 @@ function getClient() {
       prepare: false,
     });
   }
-  return globalForDb.pgClient;
+  if (!globalForDb.drizzleDb) {
+    globalForDb.drizzleDb = drizzle(globalForDb.pgClient, { schema });
+  }
+  return globalForDb.drizzleDb;
 }
 
-export const db = drizzle(getClient(), { schema });
 export { schema };
