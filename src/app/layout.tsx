@@ -15,8 +15,8 @@ const sans = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Restaurante · Food cost y compras",
-  description: "Gestión de compras, precios y escandallos del restaurante",
+  title: "Can Costa · Food cost y compras",
+  description: "Gestión de compras, precios y escandallos de Can Costa",
 };
 
 export default function RootLayout({

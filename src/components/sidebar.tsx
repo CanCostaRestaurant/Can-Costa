@@ -25,10 +25,10 @@ export function Sidebar() {
     <aside className="sticky top-0 flex h-screen w-[216px] shrink-0 flex-col gap-1 border-r border-line px-3.5 py-5 max-md:w-16">
       <div className="flex items-center gap-2.5 px-2.5 pb-6">
         <div className="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-brand font-display text-[17px] font-extrabold text-white">
-          R
+          C
         </div>
         <div className="font-display text-base font-bold tracking-tight max-md:hidden">
-          Restaurante
+          Can Costa
           <small className="block font-body text-[11px] font-medium text-ink-soft">food cost &amp; compras</small>
         </div>
       </div>
