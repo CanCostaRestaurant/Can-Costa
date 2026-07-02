@@ -241,6 +241,8 @@ export async function getDashboardData(): Promise<DashboardData> {
   const hoy = new Date();
   const lunesActual = new Date(hoy);
   lunesActual.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
+  // A medianoche exacta: si arrastra la hora, el primer lunes queda fuera del bucket.
+  lunesActual.setHours(0, 0, 0, 0);
   const lunes: Date[] = [3, 2, 1, 0].map((n) => {
     const d = new Date(lunesActual);
     d.setDate(lunesActual.getDate() - n * 7);
