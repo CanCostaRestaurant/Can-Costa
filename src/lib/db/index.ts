@@ -32,3 +32,17 @@ export function getDb(): DrizzleDb | null {
 }
 
 export { schema };
+
+// Plazo duro para trabajo contra la BD: si el socket está zombi (p. ej.
+// incidencia del pooler), las queries encolan sin error y la función se
+// colgaría minutos. Con el race, a los N ms se rechaza y el llamante puede
+// degradar a su fallback.
+export function conPlazo<T>(promesa: Promise<T>, ms = 8000): Promise<T> {
+  return Promise.race([
+    promesa,
+    new Promise<never>((_, reject) => {
+      const t = setTimeout(() => reject(new Error(`BD sin respuesta en ${ms}ms`)), ms);
+      (t as unknown as { unref?: () => void }).unref?.();
+    }),
+  ]);
+}

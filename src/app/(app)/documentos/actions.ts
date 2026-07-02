@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
-import { getDb, schema } from "@/lib/db";
+import { conPlazo, getDb, schema } from "@/lib/db";
 
 // Valida una factura en bandeja: vuelca sus líneas al histórico de precios,
 // actualiza el último precio de cada producto y deja la variación calculada.
@@ -11,18 +11,20 @@ export async function validarFactura(facturaId: string): Promise<{ ok: boolean; 
   if (!db) return { ok: false, error: "Base de datos no configurada" };
 
   try {
-    const [factura] = await db.select().from(schema.facturas).where(eq(schema.facturas.id, facturaId));
+    const [factura] = await conPlazo(
+      db.select().from(schema.facturas).where(eq(schema.facturas.id, facturaId)),
+    );
     if (!factura) return { ok: false, error: "Factura no encontrada" };
     if (factura.estado !== "revisar") return { ok: false, error: "La factura no está pendiente de revisar" };
 
-    const lineas = await db
-      .select()
-      .from(schema.facturaLineas)
-      .where(eq(schema.facturaLineas.facturaId, facturaId));
+    const lineas = await conPlazo(
+      db.select().from(schema.facturaLineas).where(eq(schema.facturaLineas.facturaId, facturaId)),
+    );
 
     const fecha = factura.fecha ?? new Date().toISOString().slice(0, 10);
 
-    await db.transaction(async (tx) => {
+    await conPlazo(
+      db.transaction(async (tx) => {
       for (const linea of lineas) {
         if (!linea.productoId || !linea.precioUnitario) continue;
 
@@ -63,7 +65,9 @@ export async function validarFactura(facturaId: string): Promise<{ ok: boolean; 
         .update(schema.facturas)
         .set({ estado: "validada", updatedAt: new Date() })
         .where(eq(schema.facturas.id, facturaId));
-    });
+      }),
+      15_000, // transacción con varias sentencias
+    );
   } catch (e) {
     console.error("[validarFactura] falló:", e instanceof Error ? e.message : e);
     return {
