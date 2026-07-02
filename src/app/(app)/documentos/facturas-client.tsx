@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, FileText, Mail } from "lucide-react";
 import { Chip, MonthChip, PageHead } from "@/components/ui";
 import { type EstadoFactura, type Factura } from "@/lib/mock";
 import { cn, eur } from "@/lib/utils";
-import { validarFactura } from "./actions";
+import { procesarDocumento, validarFactura } from "./actions";
 
 type Filtro = "todas" | "revisar" | "validada";
 
@@ -16,6 +16,22 @@ export function FacturasClient({ facturas }: { facturas: Factura[] }) {
   const [abiertaId, setAbiertaId] = useState<string | null>(null);
   const [validando, startValidar] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const inputArchivo = useRef<HTMLInputElement>(null);
+  const [leyendo, startLeer] = useTransition();
+  const [arrastrando, setArrastrando] = useState(false);
+  const [errorSubida, setErrorSubida] = useState<string | null>(null);
+
+  function onArchivo(archivo: File | null | undefined) {
+    if (!archivo || leyendo) return;
+    setErrorSubida(null);
+    const fd = new FormData();
+    fd.append("archivo", archivo);
+    startLeer(async () => {
+      const res = await procesarDocumento(fd);
+      if (!res.ok) setErrorSubida(res.error ?? "No se pudo procesar el documento");
+      router.refresh();
+    });
+  }
 
   const porRevisar = facturas.filter((f) => f.estado === "revisar").length;
   const visibles = facturas.filter((f) => filtro === "todas" || f.estado === filtro);
@@ -42,19 +58,63 @@ export function FacturasClient({ facturas }: { facturas: Factura[] }) {
         derecha={<MonthChip>Últimas 4 semanas</MonthChip>}
       />
 
-      <div className="mb-4.5 flex cursor-pointer items-center justify-center gap-8 rounded-card border-2 border-dashed border-[#D8CFBE] bg-linear-to-b from-[#FFFDF9] to-[#FBF7EF] p-7 transition-colors hover:border-brand max-md:flex-col max-md:gap-4">
-        <div className="text-center">
-          <div className="font-display text-lg font-bold tracking-tight">Arrastra aquí tus facturas</div>
-          <p className="mt-1 text-[13.5px] text-ink-soft">
-            la lectura automática con IA llega en la próxima fase
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <ViaSubida icon={<Camera className="size-5 text-brand" />}>Foto móvil</ViaSubida>
-          <ViaSubida icon={<FileText className="size-5 text-brand" />}>PDF</ViaSubida>
-          <ViaSubida icon={<Mail className="size-5 text-brand" />}>facturas@…</ViaSubida>
-        </div>
+      <input
+        ref={inputArchivo}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        className="hidden"
+        onChange={(e) => {
+          onArchivo(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+      <div
+        onClick={() => !leyendo && inputArchivo.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setArrastrando(true);
+        }}
+        onDragLeave={() => setArrastrando(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setArrastrando(false);
+          onArchivo(e.dataTransfer.files?.[0]);
+        }}
+        className={cn(
+          "mb-4.5 flex cursor-pointer items-center justify-center gap-8 rounded-card border-2 border-dashed p-7 transition-colors max-md:flex-col max-md:gap-4",
+          arrastrando
+            ? "border-brand bg-brand-soft"
+            : "border-[#D8CFBE] bg-linear-to-b from-[#FFFDF9] to-[#FBF7EF] hover:border-brand",
+        )}
+      >
+        {leyendo ? (
+          <div className="text-center">
+            <div className="font-display text-lg font-bold tracking-tight">🤖 Leyendo el documento con IA…</div>
+            <p className="mt-1 text-[13.5px] text-ink-soft">
+              extrayendo proveedor, fecha y líneas de producto — unos segundos
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="text-center">
+              <div className="font-display text-lg font-bold tracking-tight">Arrastra aquí tus facturas</div>
+              <p className="mt-1 text-[13.5px] text-ink-soft">
+                o haz clic para elegir una foto o PDF · la IA extrae las líneas sola
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <ViaSubida icon={<Camera className="size-5 text-brand" />}>Foto móvil</ViaSubida>
+              <ViaSubida icon={<FileText className="size-5 text-brand" />}>PDF</ViaSubida>
+              <ViaSubida icon={<Mail className="size-5 text-brand" />}>facturas@…</ViaSubida>
+            </div>
+          </>
+        )}
       </div>
+      {errorSubida && (
+        <div className="mb-3.5 rounded-[14px] bg-bad-soft px-4 py-3 text-[13.5px] font-semibold text-bad">
+          {errorSubida}
+        </div>
+      )}
 
       <div className="mb-3.5 flex flex-wrap gap-2">
         <FiltroChip activo={filtro === "todas"} onClick={() => setFiltro("todas")}>
