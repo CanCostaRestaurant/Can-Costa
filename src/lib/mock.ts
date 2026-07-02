@@ -1,6 +1,6 @@
 // Datos de ejemplo mientras el visual se valida; luego vendrán de Supabase.
 
-export type EstadoFactura = "procesando" | "revisar" | "validada";
+export type EstadoFactura = "procesando" | "revisar" | "validada" | "error";
 
 export type LineaFactura = {
   producto: string;

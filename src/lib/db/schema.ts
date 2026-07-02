@@ -154,6 +154,19 @@ export const facturaLineas = pgTable(
 );
 
 // ---------------------------------------------------------------------
+// ventas_dia  (facturación diaria de sala; de momento manual/seed,
+//              en Fase 3 la alimentará el import del TPV)
+// ---------------------------------------------------------------------
+
+export const ventasDia = pgTable("ventas_dia", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  fecha: date("fecha").notNull().unique(),
+  total: numeric("total", { precision: 12, scale: 2 }).notNull(),
+  origen: text("origen").notNull().default("manual"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------
 // precios  (histórico: un punto por compra de un producto)
 // ---------------------------------------------------------------------
 

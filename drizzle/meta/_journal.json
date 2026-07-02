@@ -8,6 +8,13 @@
       "when": 1783018989011,
       "tag": "0000_futuristic_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783021440941,
+      "tag": "0001_hot_calypso",
+      "breakpoints": true
     }
   ]
 }
