@@ -38,24 +38,30 @@ export default function InicioPage() {
       </div>
 
       <div className="grid grid-cols-[1.6fr_1fr] gap-3.5 max-md:grid-cols-1">
-        <div className="card p-5.5">
-          <h3 className="mb-4 font-display text-base font-bold tracking-tight">Compras por semana</h3>
-          <div className="flex h-[150px] items-end gap-4 px-1.5">
+        <div className="card flex flex-col p-5.5">
+          <h3 className="font-display text-base font-bold tracking-tight">Compras por semana</h3>
+          <div className="flex min-h-[200px] flex-1 gap-5 px-1.5 pt-8">
             {COMPRAS_SEMANA.map((s, i) => (
-              <div key={s.semana} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
+              <div key={s.semana} className="relative flex flex-1 items-end justify-center">
                 <div
                   className={cn(
-                    "anim-grow relative w-full max-w-16 rounded-t-lg rounded-b",
+                    "anim-grow relative w-full max-w-24 rounded-t-[10px]",
                     i === COMPRAS_SEMANA.length - 1 ? "bg-brand" : "bg-[#E9E2D4]",
                   )}
-                  style={{ height: `${(s.total / maxSemana) * 82}%`, animationDelay: `${i * 80}ms` }}
+                  style={{ height: `${(s.total / maxSemana) * 100}%`, animationDelay: `${i * 80}ms` }}
                 >
-                  <span className="absolute -top-5.5 left-1/2 -translate-x-1/2 font-display text-xs font-bold whitespace-nowrap">
+                  <span className="absolute -top-6 left-1/2 -translate-x-1/2 font-display text-[13px] font-bold whitespace-nowrap">
                     {eur(s.total, false)}
                   </span>
                 </div>
-                <span className="text-xs text-ink-soft">{s.semana}</span>
               </div>
+            ))}
+          </div>
+          <div className="flex gap-5 border-t border-line px-1.5">
+            {COMPRAS_SEMANA.map((s) => (
+              <span key={s.semana} className="flex-1 pt-2 text-center text-xs text-ink-soft">
+                {s.semana}
+              </span>
             ))}
           </div>
         </div>
