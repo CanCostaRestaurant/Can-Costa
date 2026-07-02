@@ -167,6 +167,41 @@ export const ventasDia = pgTable("ventas_dia", {
 });
 
 // ---------------------------------------------------------------------
+// platos  (escandallos: coste = Σ ingredientes × último precio + merma)
+// ---------------------------------------------------------------------
+
+export const platos = pgTable("platos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nombre: text("nombre").notNull(),
+  emoji: text("emoji").notNull().default("🍽️"),
+  pvp: numeric("pvp", { precision: 12, scale: 2 }), // precio en carta; null = sin fijar
+  mermaPct: numeric("merma_pct", { precision: 5, scale: 2 }).notNull().default("10"),
+  activo: boolean("activo").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Una línea por ingrediente. Dos variantes:
+//  - con producto_id + cantidad → coste vivo (cantidad × último precio)
+//  - sin producto (descripcion + coste_fijo) → importe fijo (especias, varios…)
+export const platoIngredientes = pgTable(
+  "plato_ingredientes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    platoId: uuid("plato_id")
+      .notNull()
+      .references(() => platos.id, { onDelete: "cascade" }),
+    productoId: uuid("producto_id").references(() => productos.id, { onDelete: "set null" }),
+    descripcion: text("descripcion"),
+    cantidad: numeric("cantidad", { precision: 12, scale: 3 }), // en la unidad del producto
+    costeFijo: numeric("coste_fijo", { precision: 12, scale: 4 }),
+    orden: integer("orden"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("plato_ingredientes_plato_idx").on(t.platoId)],
+);
+
+// ---------------------------------------------------------------------
 // precios  (histórico: un punto por compra de un producto)
 // ---------------------------------------------------------------------
 

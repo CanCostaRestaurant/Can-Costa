@@ -9,6 +9,7 @@ import {
   COMPRAS_SEMANA,
   FACTURAS,
   KPIS,
+  PLATOS,
   PRODUCTOS,
   type Factura,
   type LineaFactura,
@@ -476,5 +477,216 @@ export async function getProveedoresResumen(): Promise<ProveedorResumen[]> {
   } catch (e) {
     logFallo("getProveedoresResumen", e);
     return [];
+  }
+}
+
+// ---------------------------------------------------------------------
+// Escandallos (platos): coste vivo = Σ ingredientes × último precio + merma
+// ---------------------------------------------------------------------
+
+export type IngredientePlato = {
+  id: string;
+  productoId: string | null;
+  nombre: string; // nombre del producto o descripción libre
+  cantidad: number | null; // en la unidad del producto
+  unidad: string | null;
+  precioUnitario: number | null; // último precio de compra
+  coste: number;
+  variacion: number; // % del producto (0 para líneas fijas)
+  esFijo: boolean;
+};
+
+export type PlatoResumen = {
+  id: string;
+  nombre: string;
+  emoji: string;
+  coste: number;
+  pvp: number | null;
+  foodCost: number | null;
+  aviso: string | null; // "▲ subió la merluza fresca"
+};
+
+export type PlatoDetalle = PlatoResumen & {
+  mermaPct: number;
+  subtotal: number;
+  ingredientes: IngredientePlato[];
+};
+
+function costeLinea(l: { cantidad: number | null; precioUnitario: number | null; costeFijo: number | null }): number {
+  if (l.costeFijo !== null) return l.costeFijo;
+  if (l.cantidad !== null && l.precioUnitario !== null) return l.cantidad * l.precioUnitario;
+  return 0;
+}
+
+function mockPlatoResumen(): PlatoResumen[] {
+  return PLATOS.map((p) => ({
+    id: p.id,
+    nombre: p.nombre,
+    emoji: p.emoji,
+    coste: p.coste,
+    pvp: p.pvp,
+    foodCost: (p.coste / p.pvp) * 100,
+    aviso: p.aviso ?? null,
+  }));
+}
+
+export async function getPlatosResumen(): Promise<PlatoResumen[]> {
+  const db = getDb();
+  if (!db) return mockPlatoResumen();
+
+  try {
+    return await conPlazo(
+      (async (): Promise<PlatoResumen[]> => {
+        const [filas, lineas, historico] = await Promise.all([
+          db.select().from(schema.platos).where(eq(schema.platos.activo, true)).orderBy(asc(schema.platos.nombre)),
+          db
+            .select({
+              platoId: schema.platoIngredientes.platoId,
+              cantidad: schema.platoIngredientes.cantidad,
+              costeFijo: schema.platoIngredientes.costeFijo,
+              precio: schema.productos.ultimoPrecio,
+              productoNombre: schema.productos.nombre,
+              productoId: schema.platoIngredientes.productoId,
+            })
+            .from(schema.platoIngredientes)
+            .leftJoin(schema.productos, eq(schema.platoIngredientes.productoId, schema.productos.id)),
+          getProductosConHistorico(),
+        ]);
+
+        const variacionPorProducto = new Map(historico.map((p) => [p.id, p.variacion]));
+        const porPlato = new Map<string, { subtotal: number; aviso: string | null }>();
+        for (const l of lineas) {
+          const acc = porPlato.get(l.platoId) ?? { subtotal: 0, aviso: null };
+          acc.subtotal += costeLinea({
+            cantidad: l.cantidad ? Number(l.cantidad) : null,
+            precioUnitario: l.precio ? Number(l.precio) : null,
+            costeFijo: l.costeFijo ? Number(l.costeFijo) : null,
+          });
+          if (!acc.aviso && l.productoId && (variacionPorProducto.get(l.productoId) ?? 0) >= 5) {
+            acc.aviso = `▲ subió ${(l.productoNombre ?? "un ingrediente").toLowerCase()}`;
+          }
+          porPlato.set(l.platoId, acc);
+        }
+
+        return filas.map((p) => {
+          const acc = porPlato.get(p.id) ?? { subtotal: 0, aviso: null };
+          const coste = acc.subtotal * (1 + Number(p.mermaPct) / 100);
+          const pvp = p.pvp !== null ? Number(p.pvp) : null;
+          return {
+            id: p.id,
+            nombre: p.nombre,
+            emoji: p.emoji,
+            coste,
+            pvp,
+            foodCost: pvp && pvp > 0 ? (coste / pvp) * 100 : null,
+            aviso: acc.aviso,
+          };
+        });
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getPlatosResumen", e);
+    return [];
+  }
+}
+
+export async function getPlatoDetalle(id: string): Promise<PlatoDetalle | null> {
+  const db = getDb();
+  if (!db) {
+    const p = PLATOS.find((x) => x.id === id);
+    if (!p) return null;
+    return {
+      id: p.id,
+      nombre: p.nombre,
+      emoji: p.emoji,
+      coste: p.coste,
+      pvp: p.pvp,
+      foodCost: (p.coste / p.pvp) * 100,
+      aviso: p.aviso ?? null,
+      mermaPct: 0,
+      subtotal: p.coste,
+      ingredientes: p.ingredientes.map((ing, i) => ({
+        id: String(i),
+        productoId: null,
+        nombre: ing.nombre,
+        cantidad: null,
+        unidad: null,
+        precioUnitario: null,
+        coste: ing.coste,
+        variacion: 0,
+        esFijo: true,
+      })),
+    };
+  }
+
+  try {
+    return await conPlazo(
+      (async (): Promise<PlatoDetalle | null> => {
+        const [plato] = await db.select().from(schema.platos).where(eq(schema.platos.id, id));
+        if (!plato) return null;
+
+        const [lineas, historico] = await Promise.all([
+          db
+            .select({
+              id: schema.platoIngredientes.id,
+              productoId: schema.platoIngredientes.productoId,
+              descripcion: schema.platoIngredientes.descripcion,
+              cantidad: schema.platoIngredientes.cantidad,
+              costeFijo: schema.platoIngredientes.costeFijo,
+              orden: schema.platoIngredientes.orden,
+              productoNombre: schema.productos.nombre,
+              unidad: schema.productos.unidad,
+              precio: schema.productos.ultimoPrecio,
+            })
+            .from(schema.platoIngredientes)
+            .leftJoin(schema.productos, eq(schema.platoIngredientes.productoId, schema.productos.id))
+            .where(eq(schema.platoIngredientes.platoId, id))
+            .orderBy(asc(schema.platoIngredientes.orden), asc(schema.platoIngredientes.createdAt)),
+          getProductosConHistorico(),
+        ]);
+
+        const variacionPorProducto = new Map(historico.map((p) => [p.id, p.variacion]));
+        const ingredientes: IngredientePlato[] = lineas.map((l) => {
+          const cantidad = l.cantidad ? Number(l.cantidad) : null;
+          const precioUnitario = l.precio ? Number(l.precio) : null;
+          const costeFijo = l.costeFijo ? Number(l.costeFijo) : null;
+          return {
+            id: l.id,
+            productoId: l.productoId,
+            nombre: l.productoNombre ?? l.descripcion ?? "—",
+            cantidad,
+            unidad: l.productoId ? (l.unidad ?? "ud") : null,
+            precioUnitario,
+            coste: costeLinea({ cantidad, precioUnitario, costeFijo }),
+            variacion: l.productoId ? (variacionPorProducto.get(l.productoId) ?? 0) : 0,
+            esFijo: l.productoId === null,
+          };
+        });
+
+        const subtotal = ingredientes.reduce((acc, i) => acc + i.coste, 0);
+        const mermaPct = Number(plato.mermaPct);
+        const coste = subtotal * (1 + mermaPct / 100);
+        const pvp = plato.pvp !== null ? Number(plato.pvp) : null;
+        const conSubida = ingredientes.find((i) => i.variacion >= 5);
+
+        return {
+          id: plato.id,
+          nombre: plato.nombre,
+          emoji: plato.emoji,
+          coste,
+          pvp,
+          foodCost: pvp && pvp > 0 ? (coste / pvp) * 100 : null,
+          aviso: conSubida ? `▲ subió ${conSubida.nombre.toLowerCase()}` : null,
+          mermaPct,
+          subtotal,
+          ingredientes,
+        };
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getPlatoDetalle", e);
+    return null;
   }
 }
