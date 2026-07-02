@@ -8,6 +8,7 @@ import {
   ChefHat,
   Coins,
   Home,
+  LogOut,
   ReceiptText,
   Scale,
   TriangleAlert,
@@ -16,6 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { cerrarSesion } from "@/app/login/actions";
 
 type Item = { href: string; label: string; icon: LucideIcon; chip?: "nuevo" | "pronto" };
 
@@ -108,10 +110,17 @@ export function Sidebar() {
         <div className="grid size-8 shrink-0 place-items-center rounded-full bg-ink text-[13px] font-bold text-white">
           J
         </div>
-        <span className="text-[13px] font-semibold max-md:hidden">
+        <span className="flex-1 text-[13px] font-semibold max-md:hidden">
           Joaquim
           <small className="block text-[11.5px] font-normal text-ink-soft">Propietario</small>
         </span>
+        <button
+          onClick={() => cerrarSesion()}
+          title="Cerrar sesión"
+          className="cursor-pointer rounded-lg p-1.5 text-ink-soft transition-colors hover:bg-chip hover:text-ink max-md:hidden"
+        >
+          <LogOut className="size-4" />
+        </button>
       </div>
     </aside>
   );

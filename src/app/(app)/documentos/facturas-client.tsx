@@ -2,15 +2,29 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, FileText, Mail } from "lucide-react";
+import { Camera, FileText, Mail, X } from "lucide-react";
 import { Chip, MonthChip, PageHead } from "@/components/ui";
 import { type EstadoFactura, type Factura } from "@/lib/mock";
 import { cn, eur } from "@/lib/utils";
-import { procesarDocumento, validarFactura } from "./actions";
+import {
+  actualizarLineaFactura,
+  agregarLineaFactura,
+  eliminarLineaFactura,
+  procesarDocumento,
+  validarFactura,
+} from "./actions";
 
 type Filtro = "todas" | "revisar" | "validada";
 
-export function FacturasClient({ facturas }: { facturas: Factura[] }) {
+type ProductoOpcion = { id: string; nombre: string; precio: string };
+
+export function FacturasClient({
+  facturas,
+  productos,
+}: {
+  facturas: Factura[];
+  productos: ProductoOpcion[];
+}) {
   const router = useRouter();
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [abiertaId, setAbiertaId] = useState<string | null>(null);
@@ -20,6 +34,24 @@ export function FacturasClient({ facturas }: { facturas: Factura[] }) {
   const [leyendo, startLeer] = useTransition();
   const [arrastrando, setArrastrando] = useState(false);
   const [errorSubida, setErrorSubida] = useState<string | null>(null);
+
+  // Corrección de líneas en la bandeja
+  const [corrigiendo, startCorregir] = useTransition();
+  const [nuevaDesc, setNuevaDesc] = useState("");
+  const [nuevaCant, setNuevaCant] = useState("");
+  const [nuevoPrecio, setNuevoPrecio] = useState("");
+
+  function ejecutarCorreccion(fn: () => Promise<{ ok: boolean; error?: string }>) {
+    setError(null);
+    startCorregir(async () => {
+      const res = await fn();
+      if (!res.ok) {
+        setError(res.error ?? "No se pudo guardar la corrección");
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   function onArchivo(archivo: File | null | undefined) {
     if (!archivo || leyendo) return;
@@ -205,25 +237,151 @@ export function FacturasClient({ facturas }: { facturas: Factura[] }) {
               </tr>
             </thead>
             <tbody>
-              {abierta.lineasDetalle.map((l) => (
-                <tr
-                  key={l.producto}
-                  className={cn("border-b border-line", l.variacion && l.variacion > 0 && "bg-warn-soft")}
-                >
-                  <Td className="font-semibold">{l.producto}</Td>
-                  <Td>{l.cantidad}</Td>
-                  <Td className="font-display font-semibold">{l.precioUd}</Td>
-                  <Td className="font-display font-semibold">{eur(l.total)}</Td>
-                  <Td>
-                    {l.variacion !== undefined &&
-                      (l.variacion > 0 ? (
-                        <Chip tone="bad">▲ +{l.variacion}% vs última compra</Chip>
+              {abierta.lineasDetalle.map((l) => {
+                const editable = abierta.estado === "revisar" && Boolean(l.id);
+                return (
+                  <tr
+                    key={l.id ?? l.producto}
+                    className={cn("border-b border-line", l.variacion && l.variacion > 0 && "bg-warn-soft")}
+                  >
+                    <Td className="font-semibold">
+                      {l.producto}
+                      {editable && (
+                        <select
+                          value={l.productoId ?? ""}
+                          onChange={(e) =>
+                            ejecutarCorreccion(() =>
+                              actualizarLineaFactura(l.id!, abierta.id, {
+                                productoId: e.target.value || null,
+                              }),
+                            )
+                          }
+                          className="mt-1 block w-full max-w-[240px] rounded-lg border border-line bg-card px-2 py-1 text-xs font-normal text-ink-soft outline-none focus:border-brand"
+                        >
+                          <option value="">— sin mapear a catálogo —</option>
+                          {productos.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.nombre} · {p.precio}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </Td>
+                    <Td>
+                      {editable ? (
+                        <CampoLinea
+                          valorInicial={l.cantidadNum ?? 0}
+                          sufijo={l.unidad ?? "ud"}
+                          paso="0.001"
+                          onGuardar={(v) =>
+                            ejecutarCorreccion(() =>
+                              actualizarLineaFactura(l.id!, abierta.id, { cantidad: v }),
+                            )
+                          }
+                        />
                       ) : (
-                        <Chip tone="good">▼ {l.variacion}%</Chip>
-                      ))}
+                        l.cantidad
+                      )}
+                    </Td>
+                    <Td className="font-display font-semibold">
+                      {editable ? (
+                        <CampoLinea
+                          valorInicial={l.precioNum ?? 0}
+                          sufijo={`€/${l.unidad ?? "ud"}`}
+                          paso="0.01"
+                          onGuardar={(v) =>
+                            ejecutarCorreccion(() =>
+                              actualizarLineaFactura(l.id!, abierta.id, { precioUnitario: v }),
+                            )
+                          }
+                        />
+                      ) : (
+                        l.precioUd
+                      )}
+                    </Td>
+                    <Td className="font-display font-semibold">{eur(l.total)}</Td>
+                    <Td>
+                      <span className="flex items-center justify-end gap-1.5">
+                        {l.variacion !== undefined &&
+                          (l.variacion > 0 ? (
+                            <Chip tone="bad">▲ +{l.variacion}%</Chip>
+                          ) : (
+                            <Chip tone="good">▼ {l.variacion}%</Chip>
+                          ))}
+                        {editable && (
+                          <button
+                            onClick={() =>
+                              ejecutarCorreccion(() => eliminarLineaFactura(l.id!, abierta.id))
+                            }
+                            title="Eliminar línea"
+                            className="cursor-pointer rounded-lg p-1.5 text-ink-soft transition-colors hover:bg-bad-soft hover:text-bad"
+                          >
+                            <X className="size-4" />
+                          </button>
+                        )}
+                      </span>
+                    </Td>
+                  </tr>
+                );
+              })}
+
+              {abierta.estado === "revisar" && (
+                <tr className="border-b border-line bg-hover/60">
+                  <Td>
+                    <input
+                      placeholder="+ Añadir línea que falte…"
+                      value={nuevaDesc}
+                      onChange={(e) => setNuevaDesc(e.target.value)}
+                      className="w-full rounded-lg border border-line bg-card px-2.5 py-2 text-sm outline-none focus:border-brand"
+                    />
+                  </Td>
+                  <Td>
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      placeholder="cant."
+                      value={nuevaCant}
+                      onChange={(e) => setNuevaCant(e.target.value)}
+                      className="w-20 rounded-lg border border-line bg-card px-2.5 py-2 text-sm outline-none focus:border-brand"
+                    />
+                  </Td>
+                  <Td>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="precio"
+                      value={nuevoPrecio}
+                      onChange={(e) => setNuevoPrecio(e.target.value)}
+                      className="w-24 rounded-lg border border-line bg-card px-2.5 py-2 text-sm outline-none focus:border-brand"
+                    />
+                  </Td>
+                  <Td colSpan={2}>
+                    <button
+                      onClick={() =>
+                        ejecutarCorreccion(async () => {
+                          const res = await agregarLineaFactura(abierta.id, {
+                            descripcion: nuevaDesc,
+                            cantidad: parseFloat(nuevaCant.replace(",", ".")) || undefined,
+                            precioUnitario: parseFloat(nuevoPrecio.replace(",", ".")) || undefined,
+                          });
+                          if (res.ok) {
+                            setNuevaDesc("");
+                            setNuevaCant("");
+                            setNuevoPrecio("");
+                          }
+                          return res;
+                        })
+                      }
+                      disabled={!nuevaDesc.trim() || corrigiendo}
+                      className="cursor-pointer rounded-lg bg-ink px-3 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-black disabled:opacity-40"
+                    >
+                      Añadir
+                    </button>
                   </Td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
           <div className="flex items-center justify-end gap-2.5 px-5.5 py-4">
@@ -247,6 +405,37 @@ export function FacturasClient({ facturas }: { facturas: Factura[] }) {
         </div>
       )}
     </section>
+  );
+}
+
+function CampoLinea({
+  valorInicial,
+  sufijo,
+  paso,
+  onGuardar,
+}: {
+  valorInicial: number;
+  sufijo: string;
+  paso: string;
+  onGuardar: (valor: number) => void;
+}) {
+  const [texto, setTexto] = useState(String(valorInicial));
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input
+        type="number"
+        step={paso}
+        min="0"
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        onBlur={() => {
+          const v = parseFloat(texto.replace(",", "."));
+          if (Number.isFinite(v) && v !== valorInicial) onGuardar(v);
+        }}
+        className="w-20 rounded-lg border border-line bg-card px-2 py-1 font-body text-sm font-normal outline-none focus:border-brand"
+      />
+      <span className="text-xs font-normal text-ink-soft">{sufijo}</span>
+    </span>
   );
 }
 

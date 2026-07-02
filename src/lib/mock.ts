@@ -8,6 +8,12 @@ export type LineaFactura = {
   precioUd: string;
   total: number;
   variacion?: number; // % vs última compra
+  // Campos para el editor de la bandeja (solo llegan desde BD):
+  id?: string;
+  productoId?: string | null;
+  cantidadNum?: number | null;
+  precioNum?: number | null;
+  unidad?: string | null;
 };
 
 export type Factura = {

@@ -12,6 +12,119 @@ function numeroSano(v: number | null | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
+// ── Edición de líneas en la bandeja (solo facturas en estado 'revisar') ──
+
+async function facturaEnRevision(facturaId: string) {
+  const db = getDb();
+  if (!db) return null;
+  const [factura] = await conPlazo(db.select().from(schema.facturas).where(eq(schema.facturas.id, facturaId)));
+  return factura?.estado === "revisar" ? factura : null;
+}
+
+export async function actualizarLineaFactura(
+  lineaId: string,
+  facturaId: string,
+  datos: { productoId?: string | null; cantidad?: number | null; precioUnitario?: number | null },
+): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "Base de datos no configurada" };
+  try {
+    if (!(await facturaEnRevision(facturaId))) {
+      return { ok: false, error: "Solo se pueden corregir facturas pendientes de revisar" };
+    }
+    const [linea] = await conPlazo(
+      db.select().from(schema.facturaLineas).where(eq(schema.facturaLineas.id, lineaId)),
+    );
+    if (!linea || linea.facturaId !== facturaId) return { ok: false, error: "Línea no encontrada" };
+
+    const set: Record<string, unknown> = {};
+    if (datos.productoId !== undefined) set.productoId = datos.productoId;
+    const cantidad =
+      datos.cantidad !== undefined ? datos.cantidad : linea.cantidad ? Number(linea.cantidad) : null;
+    const precio =
+      datos.precioUnitario !== undefined
+        ? datos.precioUnitario
+        : linea.precioUnitario
+          ? Number(linea.precioUnitario)
+          : null;
+    if (datos.cantidad !== undefined) {
+      if (datos.cantidad !== null && (!Number.isFinite(datos.cantidad) || datos.cantidad <= 0)) {
+        return { ok: false, error: "Cantidad no válida" };
+      }
+      set.cantidad = datos.cantidad?.toFixed(3) ?? null;
+    }
+    if (datos.precioUnitario !== undefined) {
+      if (datos.precioUnitario !== null && (!Number.isFinite(datos.precioUnitario) || datos.precioUnitario < 0)) {
+        return { ok: false, error: "Precio no válido" };
+      }
+      set.precioUnitario = datos.precioUnitario?.toFixed(4) ?? null;
+    }
+    // El importe de la línea se recalcula si hay cantidad y precio.
+    if (cantidad !== null && precio !== null) set.total = (cantidad * precio).toFixed(2);
+
+    await conPlazo(db.update(schema.facturaLineas).set(set).where(eq(schema.facturaLineas.id, lineaId)));
+    revalidatePath("/documentos");
+    return { ok: true };
+  } catch (e) {
+    console.error("[actualizarLineaFactura] falló:", e instanceof Error ? e.message : e);
+    resetDb();
+    return { ok: false, error: "La base de datos no responde ahora mismo" };
+  }
+}
+
+export async function eliminarLineaFactura(
+  lineaId: string,
+  facturaId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "Base de datos no configurada" };
+  try {
+    if (!(await facturaEnRevision(facturaId))) {
+      return { ok: false, error: "Solo se pueden corregir facturas pendientes de revisar" };
+    }
+    await conPlazo(db.delete(schema.facturaLineas).where(eq(schema.facturaLineas.id, lineaId)));
+    revalidatePath("/documentos");
+    return { ok: true };
+  } catch (e) {
+    console.error("[eliminarLineaFactura] falló:", e instanceof Error ? e.message : e);
+    resetDb();
+    return { ok: false, error: "La base de datos no responde ahora mismo" };
+  }
+}
+
+export async function agregarLineaFactura(
+  facturaId: string,
+  datos: { descripcion: string; cantidad?: number; precioUnitario?: number; productoId?: string | null },
+): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "Base de datos no configurada" };
+  if (!datos.descripcion.trim()) return { ok: false, error: "Indica la descripción de la línea" };
+  try {
+    if (!(await facturaEnRevision(facturaId))) {
+      return { ok: false, error: "Solo se pueden corregir facturas pendientes de revisar" };
+    }
+    const cantidad = numeroSano(datos.cantidad ?? null);
+    const precio = numeroSano(datos.precioUnitario ?? null);
+    await conPlazo(
+      db.insert(schema.facturaLineas).values({
+        facturaId,
+        productoId: datos.productoId ?? null,
+        descripcion: datos.descripcion.trim().slice(0, 200),
+        cantidad: cantidad?.toFixed(3) ?? null,
+        precioUnitario: precio?.toFixed(4) ?? null,
+        total: cantidad !== null && precio !== null ? (cantidad * precio).toFixed(2) : null,
+        orden: 99,
+      }),
+    );
+    revalidatePath("/documentos");
+    return { ok: true };
+  } catch (e) {
+    console.error("[agregarLineaFactura] falló:", e instanceof Error ? e.message : e);
+    resetDb();
+    return { ok: false, error: "La base de datos no responde ahora mismo" };
+  }
+}
+
 // Pipeline foto/PDF → IA → factura con líneas en la bandeja (estado revisar).
 export async function procesarDocumento(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const db = getDb();

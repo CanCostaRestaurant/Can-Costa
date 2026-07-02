@@ -178,7 +178,9 @@ export async function getFacturas(): Promise<Factura[]> {
         if (idsRevisar.length) {
           const lineas = await db
             .select({
+              id: schema.facturaLineas.id,
               facturaId: schema.facturaLineas.facturaId,
+              productoId: schema.facturaLineas.productoId,
               descripcion: schema.facturaLineas.descripcion,
               cantidad: schema.facturaLineas.cantidad,
               unidad: schema.facturaLineas.unidad,
@@ -208,6 +210,11 @@ export async function getFacturas(): Promise<Factura[]> {
                   : "—",
               total: l.total ? Number(l.total) : 0,
               variacion: variacion !== undefined && variacion !== 0 ? variacion : undefined,
+              id: l.id,
+              productoId: l.productoId,
+              cantidadNum: l.cantidad ? Number(l.cantidad) : null,
+              precioNum: precio,
+              unidad: l.unidad,
             });
             detalles.set(l.facturaId, arr);
           }
