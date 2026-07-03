@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowLeft, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { type CategoriaDesglose } from "@/lib/db/queries";
 import { cn, eur, pct } from "@/lib/utils";
 
 type Trozo = { nombre: string; importe: number; pct: number };
 
-const COLORES = ["#E8532F", "#F2B84B", "#7BA7BC", "#9CBE8C", "#B6A6C9", "#C9C4B8"];
+const COLORES = ["#E8532F", "#F2B84B", "#7BA7BC", "#9CBE8C", "#B6A6C9", "#C9C4B8", "#D98E73", "#8FA98F"];
 
 export function DesgloseTabs({
   etiquetaMes,
@@ -15,8 +18,9 @@ export function DesgloseTabs({
   margen,
   margenPct,
   foodCostPct,
-  listaGastos,
+  categorias,
   listaVentas,
+  conIva,
 }: {
   etiquetaMes: string;
   etiquetaCorta: string;
@@ -25,10 +29,13 @@ export function DesgloseTabs({
   margen: number;
   margenPct: number | null;
   foodCostPct: number | null;
-  listaGastos: Trozo[];
+  categorias: CategoriaDesglose[];
   listaVentas: Trozo[];
+  conIva: boolean;
 }) {
   const [tab, setTab] = useState<"resultados" | "gastos" | "ventas">("resultados");
+  const [drill, setDrill] = useState<string | null>(null); // categoría abierta
+  const abierta = categorias.find((c) => c.categoria === drill) ?? null;
 
   return (
     <div className="card p-5.5">
@@ -90,21 +97,79 @@ export function DesgloseTabs({
         </div>
       )}
 
-      {tab === "gastos" && (
-        <Desglose
-          titulo="Desglose por proveedor"
-          etiquetaCorta={etiquetaCorta}
-          total={gastos}
-          trozos={listaGastos}
-          vacio="Sin gastos este mes."
-        />
-      )}
+      {tab === "gastos" &&
+        (abierta ? (
+          <div className="anim-in">
+            <button
+              onClick={() => setDrill(null)}
+              className="mb-2 flex cursor-pointer items-center gap-1 text-[12.5px] font-semibold text-ink-soft hover:text-ink"
+            >
+              <ArrowLeft className="size-3.5" /> todas las categorías
+            </button>
+            <div className="flex items-baseline justify-between">
+              <div className="text-[14.5px] font-bold">{abierta.etiqueta}</div>
+              <div className="font-display text-[15px] font-bold">
+                {eur(abierta.importe)}{" "}
+                <span className="text-[12px] font-normal text-ink-soft">({pct(abierta.pct)} del gasto)</span>
+              </div>
+            </div>
+            <div className="mt-3 text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
+              Por proveedor
+            </div>
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {abierta.proveedores.map((t, i) => (
+                <div key={t.nombre} className="flex items-center gap-2 text-[12.5px]">
+                  <span
+                    className="size-2.5 shrink-0 rounded-[3px]"
+                    style={{ background: COLORES[i % COLORES.length] }}
+                  />
+                  <span className="min-w-0 flex-1 truncate font-semibold">{t.nombre}</span>
+                  <span className="text-ink-soft">{pct(t.pct)}</span>
+                  <span className="w-20 text-right font-display font-bold">{eur(t.importe, false)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
+              Documentos que influyen
+            </div>
+            <div className="mt-1.5 flex flex-col">
+              {abierta.documentos.map((d) => (
+                <Link
+                  key={d.id}
+                  href="/documentos"
+                  className="-mx-1.5 flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-[12.5px] hover:bg-hover"
+                >
+                  <span className="min-w-0 flex-1 truncate font-semibold">{d.proveedor}</span>
+                  <span className="text-ink-soft capitalize">{d.tipo === "albaran" ? "albarán" : d.tipo}</span>
+                  <span className="text-ink-soft">{d.fecha}</span>
+                  <span className="w-18 text-right font-display font-bold">{eur(d.total, false)}</span>
+                  <ExternalLink className="size-3 text-ink-soft/60" />
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <Desglose
+            titulo="Desglose por categorías"
+            nota="haz clic en una categoría para ver proveedores y documentos"
+            etiquetaCorta={etiquetaCorta}
+            total={gastos}
+            conIva={conIva}
+            trozos={categorias.map((c) => ({ nombre: c.etiqueta, importe: c.importe, pct: c.pct }))}
+            vacio="Sin gastos este mes."
+            onClickTrozo={(nombre) => {
+              const cat = categorias.find((c) => c.etiqueta === nombre);
+              if (cat) setDrill(cat.categoria);
+            }}
+          />
+        ))}
 
       {tab === "ventas" && (
         <Desglose
           titulo="Desglose por método de cobro"
           etiquetaCorta={etiquetaCorta}
           total={ventas}
+          conIva={conIva}
           trozos={listaVentas}
           vacio="Sin ventas este mes."
         />
@@ -115,16 +180,22 @@ export function DesgloseTabs({
 
 function Desglose({
   titulo,
+  nota,
   etiquetaCorta,
   total,
+  conIva,
   trozos,
   vacio,
+  onClickTrozo,
 }: {
   titulo: string;
+  nota?: string;
   etiquetaCorta: string;
   total: number;
+  conIva: boolean;
   trozos: Trozo[];
   vacio: string;
+  onClickTrozo?: (nombre: string) => void;
 }) {
   if (total <= 0 || trozos.length === 0) {
     return <p className="py-8 text-center text-[13.5px] text-ink-soft">{vacio}</p>;
@@ -133,6 +204,7 @@ function Desglose({
     <div>
       <div className="text-[13.5px] font-bold">{titulo}</div>
       <div className="text-[12px] text-ink-soft capitalize">{etiquetaCorta}</div>
+      {nota && <div className="mt-0.5 text-[11.5px] text-ink-soft">{nota}</div>}
 
       <div className="relative mx-auto my-5 size-44">
         <Donut trozos={trozos} />
@@ -140,14 +212,21 @@ function Desglose({
           <div className="text-center">
             <div className="text-[11px] text-ink-soft">{etiquetaCorta}</div>
             <div className="font-display text-[16px] font-bold">{eur(total)}</div>
-            <div className="text-[10.5px] text-ink-soft">con IVA</div>
+            <div className="text-[10.5px] text-ink-soft">{conIva ? "con IVA" : "sin IVA"}</div>
           </div>
         </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
         {trozos.map((t, i) => (
-          <div key={t.nombre} className="flex items-center gap-2 text-[12.5px]">
+          <div
+            key={t.nombre}
+            onClick={onClickTrozo ? () => onClickTrozo(t.nombre) : undefined}
+            className={cn(
+              "flex items-center gap-2 text-[12.5px]",
+              onClickTrozo && "-mx-1.5 cursor-pointer rounded-lg px-1.5 py-1 hover:bg-hover",
+            )}
+          >
             <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: COLORES[i % COLORES.length] }} />
             <span className="min-w-0 flex-1 truncate font-semibold">{t.nombre}</span>
             <span className="text-ink-soft">{pct(t.pct)}</span>

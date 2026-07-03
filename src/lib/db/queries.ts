@@ -9,6 +9,7 @@ import { conPlazo, getDb, resetDb, schema } from "./index";
 import {
   CATEGORIAS_CON_PRODUCTOS,
   COMPRAS_SEMANA,
+  ETIQUETA_CATEGORIA,
   FACTURAS,
   KPIS,
   PLATOS,
@@ -1514,6 +1515,46 @@ const MESES_LARGOS = [
 
 export type ModoDashboard = "general" | "real";
 
+export type Ajustes = {
+  conIva: boolean; // dashboard con o sin IVA
+  ventasConTotal: boolean; // ventas con total o con base
+  ivaVentasPct: number; // IVA automático de las ventas (10% hostelería)
+  toleranciaConciliacion: number;
+};
+
+const AJUSTES_DEFECTO: Ajustes = { conIva: true, ventasConTotal: true, ivaVentasPct: 10, toleranciaConciliacion: 1 };
+
+export async function getAjustes(): Promise<Ajustes> {
+  const db = getDb();
+  if (!db) return AJUSTES_DEFECTO;
+  try {
+    return await conPlazo(
+      (async (): Promise<Ajustes> => {
+        const [fila] = await db.select().from(schema.ajustes).where(eq(schema.ajustes.id, 1));
+        if (!fila) return AJUSTES_DEFECTO;
+        return {
+          conIva: fila.conIva,
+          ventasConTotal: fila.ventasConTotal,
+          ivaVentasPct: Number(fila.ivaVentasPct),
+          toleranciaConciliacion: Number(fila.toleranciaConciliacion),
+        };
+      })(),
+    );
+  } catch (e) {
+    logFallo("getAjustes", e);
+    return AJUSTES_DEFECTO;
+  }
+}
+
+export type CategoriaDesglose = {
+  categoria: CategoriaGasto;
+  etiqueta: string;
+  importe: number;
+  pct: number;
+  proveedores: { nombre: string; importe: number; pct: number }[];
+  documentos: { id: string; proveedor: string; fecha: string; tipo: string; total: number }[];
+};
+
 export type DashboardMes = {
   mes: string; // "2026-07"
   etiquetaMes: string; // "julio 2026"
@@ -1523,9 +1564,11 @@ export type DashboardMes = {
   margen: number;
   margenPct: number | null;
   foodCostPct: number | null;
-  desgloseGastos: { nombre: string; importe: number; pct: number }[]; // por proveedor
+  desgloseCategorias: CategoriaDesglose[]; // gasto por categoría, con drill-down
   desgloseVentas: { nombre: string; importe: number; pct: number }[]; // por método de cobro
   facturasPendientes: number; // en bandeja (estado revisar/procesando) dentro del mes
+  conIva: boolean;
+  ventasConTotal: boolean;
 };
 
 function limitesMes(mes: string): { inicio: string; fin: string; dias: number } {
@@ -1549,9 +1592,11 @@ const VACIO_MES = (mes: string): DashboardMes => ({
   margen: 0,
   margenPct: null,
   foodCostPct: null,
-  desgloseGastos: [],
+  desgloseCategorias: [],
   desgloseVentas: [],
   facturasPendientes: 0,
+  conIva: true,
+  ventasConTotal: true,
 });
 
 function topConOtros(entradas: Map<string, number>, total: number, maximo = 5) {
@@ -1572,25 +1617,36 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
   if (!/^\d{4}-\d{2}$/.test(mes)) return VACIO_MES(mes);
 
   const { inicio, fin, dias: nDias } = limitesMes(mes);
-  const estados: ("validada" | "revisar" | "procesando")[] =
-    modo === "real" ? ["validada", "revisar"] : ["validada"];
+  // Como haddock: en GENERAL mandan las facturas (y tickets de gasto); en
+  // A TIEMPO REAL entran también los ALBARANES, que van por delante de la
+  // factura del proveedor.
+  const tipos: ("factura" | "albaran" | "ticket")[] =
+    modo === "real" ? ["factura", "albaran", "ticket"] : ["factura", "ticket"];
 
   try {
     return await conPlazo(
       (async (): Promise<DashboardMes> => {
+        const ajustes = await getAjustes();
         const [facturasMes, ventasMes, ticketsMes, pendientes] = await Promise.all([
           db
             .select({
+              id: schema.facturas.id,
               fecha: schema.facturas.fecha,
               total: schema.facturas.total,
+              base: schema.facturas.base,
+              iva: schema.facturas.iva,
+              tipo: schema.facturas.tipo,
+              categoria: schema.facturas.categoria,
               proveedor: schema.proveedores.nombre,
               proveedorTexto: schema.facturas.proveedorTexto,
+              categoriaProveedor: schema.proveedores.categoria,
             })
             .from(schema.facturas)
             .leftJoin(schema.proveedores, eq(schema.facturas.proveedorId, schema.proveedores.id))
             .where(
               and(
-                inArray(schema.facturas.estado, estados),
+                inArray(schema.facturas.estado, ["validada", "revisar"]),
+                inArray(schema.facturas.tipo, tipos),
                 gte(schema.facturas.fecha, inicio),
                 lt(schema.facturas.fecha, fin),
               ),
@@ -1623,23 +1679,54 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
 
         const porDia = new Map<number, { ventas: number; gastos: number }>();
         for (let d = 1; d <= nDias; d++) porDia.set(d, { ventas: 0, gastos: 0 });
-        const gastosProveedor = new Map<string, number>();
+
+        // Con IVA (total) o sin IVA (base; si falta, total − IVA).
+        const importeGasto = (f: { total: string | null; base: string | null; iva: string | null }): number => {
+          const total = Number(f.total ?? 0);
+          if (ajustes.conIva) return total;
+          if (f.base !== null) return Number(f.base);
+          if (f.iva !== null) return total - Number(f.iva);
+          return total;
+        };
+        const factorVentas = ajustes.ventasConTotal ? 1 : 1 / (1 + ajustes.ivaVentasPct / 100);
+
+        type AccCategoria = {
+          importe: number;
+          proveedores: Map<string, number>;
+          documentos: { id: string; proveedor: string; fecha: string; tipo: string; total: number }[];
+        };
+        const porCategoria = new Map<CategoriaGasto, AccCategoria>();
 
         let gastos = 0;
         for (const f of facturasMes) {
-          const importe = Number(f.total ?? 0);
+          const importe = importeGasto(f);
           gastos += importe;
           if (f.fecha) {
             const d = Number(f.fecha.slice(8, 10));
             porDia.get(d)!.gastos += importe;
           }
           const nombre = f.proveedor ?? f.proveedorTexto ?? "Sin proveedor";
-          gastosProveedor.set(nombre, (gastosProveedor.get(nombre) ?? 0) + importe);
+          const categoria = f.categoria ?? f.categoriaProveedor ?? "otros";
+          const acc: AccCategoria = porCategoria.get(categoria) ?? {
+            importe: 0,
+            proveedores: new Map<string, number>(),
+            documentos: [],
+          };
+          acc.importe += importe;
+          acc.proveedores.set(nombre, (acc.proveedores.get(nombre) ?? 0) + importe);
+          acc.documentos.push({
+            id: f.id,
+            proveedor: nombre,
+            fecha: fechaLegible(f.fecha),
+            tipo: f.tipo,
+            total: importe,
+          });
+          porCategoria.set(categoria, acc);
         }
 
         let ventas = 0;
         for (const v of ventasMes) {
-          const importe = Number(v.total);
+          const importe = Number(v.total) * factorVentas;
           ventas += importe;
           porDia.get(Number(v.fecha.slice(8, 10)))!.ventas += importe;
         }
@@ -1647,7 +1734,7 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
         let efectivo = 0;
         let tarjeta = 0;
         for (const t of ticketsMes) {
-          const importe = Number(t.total ?? 0);
+          const importe = Number(t.total ?? 0) * factorVentas;
           if (t.metodoPago === "efectivo") efectivo += importe;
           else tarjeta += importe;
         }
@@ -1656,6 +1743,17 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
           ["Efectivo", efectivo],
           ["Apunte manual", Math.max(0, ventas - efectivo - tarjeta)],
         ]);
+
+        const desgloseCategorias: CategoriaDesglose[] = [...porCategoria.entries()]
+          .sort((a, b) => b[1].importe - a[1].importe)
+          .map(([categoria, acc]) => ({
+            categoria,
+            etiqueta: ETIQUETA_CATEGORIA[categoria],
+            importe: acc.importe,
+            pct: gastos > 0 ? (acc.importe / gastos) * 100 : 0,
+            proveedores: topConOtros(acc.proveedores, acc.importe),
+            documentos: acc.documentos.sort((a, b) => b.total - a.total).slice(0, 12),
+          }));
 
         const margen = ventas - gastos;
         return {
@@ -1667,9 +1765,11 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
           margen,
           margenPct: ventas > 0 ? (margen / ventas) * 100 : null,
           foodCostPct: ventas > 0 ? (gastos / ventas) * 100 : null,
-          desgloseGastos: topConOtros(gastosProveedor, gastos),
+          desgloseCategorias,
           desgloseVentas: topConOtros(ventasPorMetodo, ventas),
           facturasPendientes: Number(pendientes[0]?.n ?? 0),
+          conIva: ajustes.conIva,
+          ventasConTotal: ajustes.ventasConTotal,
         };
       })(),
       12_000,
@@ -1677,5 +1777,39 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
   } catch (e) {
     logFallo("getDashboardMes", e);
     return VACIO_MES(mes);
+  }
+}
+
+// ---------------------------------------------------------------------
+// Usuarios (roles como haddock; gestion en /preferencias)
+// ---------------------------------------------------------------------
+
+export type UsuarioFila = {
+  id: string;
+  nombre: string;
+  rol: "admin" | "documentos" | "gestor" | "chef";
+  activo: boolean;
+  creado: string;
+};
+
+export async function getUsuarios(): Promise<UsuarioFila[]> {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    return await conPlazo(
+      (async (): Promise<UsuarioFila[]> => {
+        const filas = await db.select().from(schema.usuarios).orderBy(asc(schema.usuarios.createdAt));
+        return filas.map((u) => ({
+          id: u.id,
+          nombre: u.nombre,
+          rol: u.rol,
+          activo: u.activo,
+          creado: fechaLegible(u.createdAt.toISOString().slice(0, 10)),
+        }));
+      })(),
+    );
+  } catch (e) {
+    logFallo("getUsuarios", e);
+    return [];
   }
 }

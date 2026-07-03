@@ -1,11 +1,30 @@
-// Protege toda la app detrás del login. Sin sesión → /login.
+// Protege toda la app detrás del login y aplica los roles (como haddock):
+// admin todo; documentos solo Documentos; gestor consulta (sin TPV/reservas/
+// clientes/escandallos); chef solo Escandallos y Productos.
 import { NextResponse, type NextRequest } from "next/server";
-import { COOKIE_SESION, verificarToken } from "@/lib/auth";
+import { COOKIE_SESION, verificarSesion, type RolUsuario } from "@/lib/auth";
 
 const RUTAS_PUBLICAS = ["/login", "/api/salud"];
 
 function esPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
+// null = acceso a todo; si no, lista de prefijos permitidos + adónde mandar el resto.
+const ACCESO: Record<RolUsuario, { permite: string[]; inicio: string } | null> = {
+  admin: null,
+  documentos: { permite: ["/documentos"], inicio: "/documentos" },
+  gestor: {
+    permite: ["/", "/dashboard", "/ventas", "/documentos", "/productos", "/proveedores", "/incidencias", "/conciliacion", "/personal"],
+    inicio: "/dashboard",
+  },
+  chef: { permite: ["/escandallos", "/productos"], inicio: "/escandallos" },
+};
+
+function puedeVer(rol: RolUsuario, pathname: string): boolean {
+  const regla = ACCESO[rol];
+  if (!regla) return true;
+  return regla.permite.some((p) => (p === "/" ? pathname === "/" : pathname === p || pathname.startsWith(p + "/")));
 }
 
 export async function proxy(req: NextRequest) {
@@ -14,13 +33,17 @@ export async function proxy(req: NextRequest) {
   if (!secreto) return NextResponse.next();
 
   const { pathname } = req.nextUrl;
-  const sesionOk = await verificarToken(req.cookies.get(COOKIE_SESION)?.value, secreto);
+  const sesion = await verificarSesion(req.cookies.get(COOKIE_SESION)?.value, secreto);
 
   if (pathname === "/login") {
-    return sesionOk ? NextResponse.redirect(new URL("/", req.url)) : NextResponse.next();
+    return sesion.ok ? NextResponse.redirect(new URL("/", req.url)) : NextResponse.next();
   }
   if (esPublica(pathname)) return NextResponse.next();
-  if (!sesionOk) return NextResponse.redirect(new URL("/login", req.url));
+  if (!sesion.ok) return NextResponse.redirect(new URL("/login", req.url));
+
+  if (!puedeVer(sesion.rol, pathname)) {
+    return NextResponse.redirect(new URL(ACCESO[sesion.rol]!.inicio, req.url));
+  }
   return NextResponse.next();
 }
 

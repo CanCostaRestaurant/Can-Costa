@@ -74,7 +74,12 @@ export async function ejecutarHerramientaFina(nombre: string, entrada: Record<st
           margen_eur: d.margen,
           margen_pct: d.margenPct,
           food_cost_pct: d.foodCostPct,
-          gastos_por_proveedor: d.desgloseGastos,
+          gastos_por_categoria: d.desgloseCategorias.map((c) => ({
+            categoria: c.etiqueta,
+            importe: c.importe,
+            pct: c.pct,
+            proveedores: c.proveedores,
+          })),
           ventas_por_metodo: d.desgloseVentas,
           facturas_pendientes_de_validar: d.facturasPendientes,
         });

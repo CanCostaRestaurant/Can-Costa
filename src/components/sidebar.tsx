@@ -13,6 +13,7 @@ import {
   LogOut,
   ReceiptText,
   Scale,
+  Settings,
   Tablet,
   TriangleAlert,
   Truck,
@@ -20,9 +21,26 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { type RolUsuario } from "@/lib/auth";
 import { cerrarSesion } from "@/app/login/actions";
 
 type Item = { href: string; label: string; icon: LucideIcon; chip?: "nuevo" | "pronto" };
+
+const ETIQUETA_ROL: Record<RolUsuario, string> = {
+  admin: "Administrador",
+  documentos: "Documentos",
+  gestor: "Gestor",
+  chef: "Chef",
+};
+
+// Qué ve cada rol en el menú (el proxy además bloquea la ruta).
+function visiblePara(rol: RolUsuario, href: string): boolean {
+  if (rol === "admin") return true;
+  if (rol === "documentos") return href === "/documentos";
+  if (rol === "chef") return href === "/escandallos" || href === "/productos";
+  // gestor: consulta de negocio y gastos, sin TPV/reservas/clientes
+  return !["/tpv", "/reservas", "/clientes"].includes(href);
+}
 
 const GRUPOS: { titulo: string; items: Item[] }[] = [
   // Grupos calcados de Haddock: Negocio, Gastos, Compras (mismo contenido).
@@ -62,8 +80,11 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ nombre, rol }: { nombre: string; rol: RolUsuario }) {
   const pathname = usePathname();
+  const grupos = GRUPOS.map((g) => ({ ...g, items: g.items.filter((i) => visiblePara(rol, i.href)) })).filter(
+    (g) => g.items.length > 0,
+  );
 
   return (
     <aside className="sticky top-0 flex h-screen w-[216px] shrink-0 flex-col overflow-y-auto border-r border-line px-3.5 py-5 max-md:w-16">
@@ -77,7 +98,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      {GRUPOS.map((grupo) => (
+      {grupos.map((grupo) => (
         <div key={grupo.titulo} className="mt-3">
           <div className="px-2.5 pb-1.5 text-[11px] font-semibold tracking-wider text-ink-soft uppercase max-md:hidden">
             {grupo.titulo}
@@ -119,14 +140,28 @@ export function Sidebar() {
         </div>
       ))}
 
-      <div className="mt-auto flex items-center gap-2.5 px-2.5 pt-4">
-        <div className="grid size-8 shrink-0 place-items-center rounded-full bg-ink text-[13px] font-bold text-white">
-          J
+      <div className="mt-auto flex items-center gap-2 px-2.5 pt-4">
+        <div className="grid size-8 shrink-0 place-items-center rounded-full bg-ink text-[13px] font-bold text-white uppercase">
+          {nombre.slice(0, 1)}
         </div>
-        <span className="flex-1 text-[13px] font-semibold max-md:hidden">
-          Joaquim
-          <small className="block text-[11.5px] font-normal text-ink-soft">Propietario</small>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold max-md:hidden">
+          {nombre}
+          <small className="block text-[11.5px] font-normal text-ink-soft">{ETIQUETA_ROL[rol]}</small>
         </span>
+        {rol === "admin" && (
+          <Link
+            href="/preferencias"
+            title="Preferencias y usuarios"
+            className={cn(
+              "rounded-lg p-1.5 transition-colors max-md:hidden",
+              pathname.startsWith("/preferencias")
+                ? "bg-ink text-white"
+                : "text-ink-soft hover:bg-chip hover:text-ink",
+            )}
+          >
+            <Settings className="size-4" />
+          </Link>
+        )}
         <button
           onClick={() => cerrarSesion()}
           title="Cerrar sesión"

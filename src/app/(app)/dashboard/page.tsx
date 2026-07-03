@@ -90,11 +90,13 @@ export default async function DashboardPage({
             <b className="mb-1 block">General</b>
             En las gráficas generales ves el importe de:
             <ul className="mt-1 list-disc pl-4">
-              <li><b>Todas las facturas validadas</b></li>
+              <li><b>Todas las facturas</b> digitalizadas</li>
+              <li><b>Todos los tickets</b> de gasto</li>
               <li><b>Todas las ventas</b> (TPV y apuntes manuales)</li>
             </ul>
             <span className="mt-1.5 block opacity-80">
-              *Las facturas de la bandeja no cuentan hasta que se validan.
+              *No se muestran los albaranes para asegurar que no se duplica el importe; para verlos, activa el
+              modo dashboard "a tiempo real".
             </span>
           </InfoTip>
           <div className="flex rounded-xl border border-line bg-card p-1">
@@ -119,15 +121,22 @@ export default async function DashboardPage({
           </div>
           <InfoTip lado="izquierda">
             <b className="mb-1 block">A tiempo real</b>
-            Aquí ves el gasto según entra, sin esperar a revisar:
+            En las gráficas a tiempo real ves el importe de:
             <ul className="mt-1 list-disc pl-4">
-              <li><b>Facturas validadas</b></li>
+              <li><b>Las facturas</b> digitalizadas</li>
               <li>
-                <b>Y también las digitalizadas pendientes de validar</b> en la bandeja
-                {d.facturasPendientes > 0 && ` (${d.facturasPendientes} este mes)`}
+                <b>Todos los albaranes</b> — el gasto que se va generando sin tener que esperar a recibir la
+                factura
               </li>
+              <li><b>Todos los tickets</b> de gasto</li>
               <li><b>Todas las ventas</b></li>
             </ul>
+            {d.facturasPendientes > 0 && (
+              <span className="mt-1.5 block opacity-80">
+                *{d.facturasPendientes} documento{d.facturasPendientes > 1 ? "s" : ""} de este mes aún en la
+                bandeja.
+              </span>
+            )}
           </InfoTip>
         </div>
       </div>
@@ -207,8 +216,16 @@ export default async function DashboardPage({
 
       {/* KPIs Gastos / Ventas / Margen */}
       <div className="mb-3.5 grid grid-cols-3 gap-3.5 max-md:grid-cols-1">
-        <Kpi etiqueta="Gastos" mes={etiquetaCorta(mes)} valor={eur(d.gastos)} />
-        <Kpi etiqueta="Ventas" mes={etiquetaCorta(mes)} valor={eur(d.ventas)} />
+        <Kpi
+          etiqueta="Gastos"
+          mes={`${etiquetaCorta(mes)} · ${d.conIva ? "con IVA" : "sin IVA"}`}
+          valor={eur(d.gastos)}
+        />
+        <Kpi
+          etiqueta="Ventas"
+          mes={`${etiquetaCorta(mes)} · ${d.ventasConTotal ? "total" : "base"}`}
+          valor={eur(d.ventas)}
+        />
         <Kpi etiqueta="Margen" mes={etiquetaCorta(mes)} valor={eur(d.margen)} destacado />
       </div>
 
@@ -290,8 +307,9 @@ export default async function DashboardPage({
           margen={d.margen}
           margenPct={d.margenPct}
           foodCostPct={d.foodCostPct}
-          listaGastos={d.desgloseGastos}
+          categorias={d.desgloseCategorias}
           listaVentas={d.desgloseVentas}
+          conIva={d.conIva}
         />
       </div>
     </section>
