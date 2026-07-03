@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Phone, Settings2, Sparkles, Users } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
+import { DatePicker } from "@/components/date-picker";
 import { type DiaReservas, type ReservaDia } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
 import {
@@ -90,11 +91,10 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
             >
               <Sparkles className="size-4 text-brand" /> Reoptimizar mesas
             </button>
-            <input
-              type="date"
+            <DatePicker
               value={datos.fecha}
-              onChange={(e) => e.target.value && cambiarDia(e.target.value)}
-              className="card rounded-full! px-4 py-2 text-[13.5px] font-semibold outline-none"
+              align="right"
+              onChange={(v) => v && cambiarDia(v)}
             />
           </div>
         }

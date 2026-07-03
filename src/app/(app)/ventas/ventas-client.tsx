@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Banknote, CreditCard, Tablet, Users } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
+import { DatePicker } from "@/components/date-picker";
 import { type DesgloseDia, type VentaDia } from "@/lib/db/queries";
 import { cn, eur, pct } from "@/lib/utils";
 import { guardarVentaDia } from "./actions";
@@ -57,12 +58,11 @@ export function VentasClient({
             >
               <Tablet className="size-4 text-ink-soft" /> Abrir TPV
             </Link>
-            <input
-              type="date"
+            <DatePicker
               value={d.fecha}
               max={hoy}
-              onChange={(e) => e.target.value && cambiarDia(e.target.value)}
-              className="card rounded-full! px-4 py-2 text-[13.5px] font-semibold outline-none"
+              align="right"
+              onChange={(v) => v && cambiarDia(v)}
             />
           </div>
         }

@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Camera, FileText, Mail, SlidersHorizontal, X } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
+import { MonthPicker } from "@/components/date-picker";
 import {
   ETIQUETA_CATEGORIA,
   type CategoriaGasto,
@@ -241,12 +242,7 @@ export function FacturasClient({
 
       {conFiltros && (
         <div className="card anim-in mb-3.5 flex flex-wrap items-center gap-2.5 px-4 py-3">
-          <input
-            type="month"
-            value={fMes}
-            onChange={(e) => setFMes(e.target.value)}
-            className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] outline-none focus:border-brand"
-          />
+          <MonthPicker value={fMes} onChange={setFMes} clearable />
           <SelectFiltro valor={fTipo} onCambio={setFTipo} placeholder="Tipo">
             {TIPOS.map((t) => (
               <option key={t.valor} value={t.valor}>
