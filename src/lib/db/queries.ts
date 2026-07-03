@@ -7,11 +7,13 @@ import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, max, sum } from
 import { alias } from "drizzle-orm/pg-core";
 import { conPlazo, getDb, resetDb, schema } from "./index";
 import {
+  CATEGORIAS_CON_PRODUCTOS,
   COMPRAS_SEMANA,
   FACTURAS,
   KPIS,
   PLATOS,
   PRODUCTOS,
+  type CategoriaGasto,
   type Factura,
   type LineaFactura,
   type Producto,
@@ -83,42 +85,77 @@ export async function getProductosConHistorico(): Promise<Producto[]> {
             familia: schema.productos.familia,
             unidad: schema.productos.unidad,
             ultimaCompra: schema.productos.ultimaCompra,
+            precioPactado: schema.productos.precioPactado,
             proveedor: schema.proveedores.nombre,
+            categoriaProveedor: schema.proveedores.categoria,
+            fuenteProductos: schema.proveedores.fuenteProductos,
           })
           .from(schema.productos)
           .leftJoin(schema.proveedores, eq(schema.productos.proveedorId, schema.proveedores.id))
           .where(eq(schema.productos.activo, true))
           .orderBy(asc(schema.productos.nombre));
 
-        if (filas.length === 0) return [];
+        // Regla haddock nº 1: solo se muestran productos de proveedores cuya
+        // categoría es de compra (materia prima, bebidas, limpieza,
+        // consumibles). Los productos sin proveedor se conservan.
+        const visibles = filas.filter(
+          (f) => !f.categoriaProveedor || CATEGORIAS_CON_PRODUCTOS.includes(f.categoriaProveedor),
+        );
+        if (visibles.length === 0) return [];
 
-        const ids = filas.map((f) => f.id);
+        const ids = visibles.map((f) => f.id);
         const puntos = await db
           .select({
             productoId: schema.precios.productoId,
             precio: schema.precios.precio,
             fecha: schema.precios.fecha,
+            tipoDoc: schema.facturas.tipo,
+            cantidad: schema.facturaLineas.cantidad,
           })
           .from(schema.precios)
+          .leftJoin(schema.facturas, eq(schema.precios.facturaId, schema.facturas.id))
+          .leftJoin(schema.facturaLineas, eq(schema.precios.lineaId, schema.facturaLineas.id))
           .where(inArray(schema.precios.productoId, ids))
           .orderBy(asc(schema.precios.fecha));
 
         // Agrupar el histórico por producto (Map, sin N+1).
-        const porProducto = new Map<string, { precio: number; fecha: string }[]>();
+        type Punto = { precio: number; fecha: string; tipoDoc: string | null; peso: number };
+        const porProducto = new Map<string, Punto[]>();
         for (const p of puntos) {
           const arr = porProducto.get(p.productoId) ?? [];
-          arr.push({ precio: Number(p.precio), fecha: p.fecha });
+          arr.push({
+            precio: Number(p.precio),
+            fecha: p.fecha,
+            tipoDoc: p.tipoDoc,
+            peso: p.cantidad && Number(p.cantidad) > 0 ? Number(p.cantidad) : 1,
+          });
           porProducto.set(p.productoId, arr);
         }
 
-        return filas.map((f): Producto => {
-          const serie = (porProducto.get(f.id) ?? []).slice(-6);
+        return visibles.map((f): Producto => {
+          // Regla haddock nº 2: por defecto los productos salen de los
+          // ALBARANES (más a tiempo real); si el proveedor está configurado
+          // como 'facturas', de las facturas. Si el filtro deja la serie
+          // vacía, se usa todo para no dejar el producto ciego.
+          const todos = porProducto.get(f.id) ?? [];
+          const preferidos = todos.filter((p) =>
+            f.fuenteProductos === "facturas" ? p.tipoDoc === "factura" : p.tipoDoc !== "factura",
+          );
+          const base = preferidos.length ? preferidos : todos;
+
+          const serie = base.slice(-6);
           const hist = serie.map((s) => s.precio);
           const meses = serie.map((s) => mesCorto(s.fecha));
           const ultimo = hist.at(-1) ?? 0;
           const previo = hist.at(-2) ?? ultimo;
           const variacion = previo > 0 ? Math.round(((ultimo - previo) / previo) * 100) : 0;
           const ultimaCompra = fechaLegible(f.ultimaCompra ?? serie.at(-1)?.fecha ?? null);
+
+          // Precio de referencia = media ponderada por cantidad comprada.
+          const sumaPesos = base.reduce((a, p) => a + p.peso, 0);
+          const referencia = sumaPesos > 0 ? base.reduce((a, p) => a + p.precio * p.peso, 0) / sumaPesos : null;
+          const pactado = f.precioPactado !== null ? Number(f.precioPactado) : null;
+          const liston = pactado ?? referencia;
 
           return {
             id: f.id,
@@ -131,6 +168,14 @@ export async function getProductosConHistorico(): Promise<Producto[]> {
             hist: hist.length ? hist : [ultimo],
             meses: meses.length ? meses : [""],
             nota: generarNota(variacion, meses[0] ?? "", ultimaCompra),
+            unidad: f.unidad,
+            ultimoNum: base.length ? ultimo : null,
+            referencia,
+            maximo: base.length ? Math.max(...base.map((p) => p.precio)) : null,
+            minimo: base.length ? Math.min(...base.map((p) => p.precio)) : null,
+            nCompras: base.length,
+            precioPactado: pactado,
+            enAlza: liston !== null && base.length > 0 && ultimo > liston + 0.0001,
           };
         });
       })(),
@@ -448,6 +493,8 @@ export type ProveedorResumen = {
   nombre: string;
   email: string | null;
   telefono: string | null;
+  categoria: CategoriaGasto;
+  fuenteProductos: "albaranes" | "facturas";
   numFacturas: number;
   gastoTotal: number;
   ultimaCompra: string;
@@ -487,6 +534,8 @@ export async function getProveedoresResumen(): Promise<ProveedorResumen[]> {
               nombre: p.nombre,
               email: p.email,
               telefono: p.telefono,
+              categoria: p.categoria,
+              fuenteProductos: p.fuenteProductos,
               numFacturas: agg ? Number(agg.n) : 0,
               gastoTotal: agg?.suma ? Number(agg.suma) : 0,
               ultimaCompra: fechaLegible(agg?.ultima ?? null),
@@ -508,10 +557,11 @@ export async function getProveedoresResumen(): Promise<ProveedorResumen[]> {
 export type IngredientePlato = {
   id: string;
   productoId: string | null;
-  nombre: string; // nombre del producto o descripción libre
-  cantidad: number | null; // en la unidad del producto
+  preparacionId: string | null; // sub-receta usada como ingrediente
+  nombre: string; // nombre del producto, preparación o descripción libre
+  cantidad: number | null; // en la unidad del producto (o raciones de la preparación)
   unidad: string | null;
-  precioUnitario: number | null; // último precio de compra
+  precioUnitario: number | null; // último precio de compra (o coste/ración de la preparación)
   coste: number;
   variacion: number; // % del producto (0 para líneas fijas)
   esFijo: boolean;
@@ -522,9 +572,16 @@ export type PlatoResumen = {
   nombre: string;
   emoji: string;
   fotoUrl: string | null;
-  coste: number;
+  coste: number; // por ración, con merma
   pvp: number | null;
   foodCost: number | null;
+  margen: number | null; // % de margen real sobre el PVP
+  margenObjetivo: number | null; // % esperado (haddock: margen esperado)
+  pvpRecomendado: number | null; // PVP para llegar al objetivo
+  bajoObjetivo: boolean; // margen real por debajo del esperado → rojo
+  esPreparacion: boolean;
+  tipoPlato: "entrante" | "principal" | "postre" | "bebida" | "otro";
+  raciones: number;
   aviso: string | null; // "▲ subió la merluza fresca"
 };
 
@@ -532,7 +589,101 @@ export type PlatoDetalle = PlatoResumen & {
   mermaPct: number;
   subtotal: number;
   ingredientes: IngredientePlato[];
+  preparacionesDisponibles: { id: string; nombre: string; costeRacion: number }[];
 };
+
+// Costes de todos los platos en dos pasadas: primero el subtotal directo
+// (productos + líneas fijas), después se suman las preparaciones usadas
+// (coste por ración de la sub-receta × raciones usadas). Solo un nivel.
+type CostesPlatos = {
+  filas: (typeof schema.platos.$inferSelect)[];
+  subtotales: Map<string, number>;
+  costeRacion: Map<string, number>; // coste con merma / raciones producidas
+  avisos: Map<string, string | null>;
+};
+
+async function calcularCostesPlatos(db: NonNullable<ReturnType<typeof getDb>>): Promise<CostesPlatos> {
+  const [filas, lineas, historico] = await Promise.all([
+    db.select().from(schema.platos).where(eq(schema.platos.activo, true)).orderBy(asc(schema.platos.nombre)),
+    db
+      .select({
+        platoId: schema.platoIngredientes.platoId,
+        preparacionId: schema.platoIngredientes.preparacionId,
+        cantidad: schema.platoIngredientes.cantidad,
+        costeFijo: schema.platoIngredientes.costeFijo,
+        precio: schema.productos.ultimoPrecio,
+        productoNombre: schema.productos.nombre,
+        productoId: schema.platoIngredientes.productoId,
+      })
+      .from(schema.platoIngredientes)
+      .leftJoin(schema.productos, eq(schema.platoIngredientes.productoId, schema.productos.id)),
+    getProductosConHistorico(),
+  ]);
+
+  const variacionPorProducto = new Map(historico.map((p) => [p.id, p.variacion]));
+  const directos = new Map<string, number>();
+  const avisos = new Map<string, string | null>();
+  const lineasPrep: { platoId: string; preparacionId: string; cantidad: number }[] = [];
+
+  for (const l of lineas) {
+    if (l.preparacionId) {
+      lineasPrep.push({ platoId: l.platoId, preparacionId: l.preparacionId, cantidad: l.cantidad ? Number(l.cantidad) : 0 });
+      continue;
+    }
+    directos.set(
+      l.platoId,
+      (directos.get(l.platoId) ?? 0) +
+        costeLinea({
+          cantidad: l.cantidad ? Number(l.cantidad) : null,
+          precioUnitario: l.precio ? Number(l.precio) : null,
+          costeFijo: l.costeFijo ? Number(l.costeFijo) : null,
+        }),
+    );
+    if (!avisos.get(l.platoId) && l.productoId && (variacionPorProducto.get(l.productoId) ?? 0) >= 5) {
+      avisos.set(l.platoId, `▲ subió ${(l.productoNombre ?? "un ingrediente").toLowerCase()}`);
+    }
+  }
+
+  const costeRacion = new Map(
+    filas.map((p) => {
+      const sub = directos.get(p.id) ?? 0;
+      const raciones = Number(p.raciones) || 1;
+      return [p.id, (sub * (1 + Number(p.mermaPct) / 100)) / raciones] as const;
+    }),
+  );
+
+  const subtotales = new Map(filas.map((p) => [p.id, directos.get(p.id) ?? 0]));
+  for (const lp of lineasPrep) {
+    subtotales.set(lp.platoId, (subtotales.get(lp.platoId) ?? 0) + lp.cantidad * (costeRacion.get(lp.preparacionId) ?? 0));
+  }
+
+  return { filas, subtotales, costeRacion, avisos };
+}
+
+function aResumen(p: typeof schema.platos.$inferSelect, subtotal: number, aviso: string | null): PlatoResumen {
+  const raciones = Number(p.raciones) || 1;
+  const coste = (subtotal * (1 + Number(p.mermaPct) / 100)) / raciones;
+  const pvp = p.pvp !== null ? Number(p.pvp) : null;
+  const margen = pvp && pvp > 0 ? ((pvp - coste) / pvp) * 100 : null;
+  const objetivo = p.margenObjetivo !== null ? Number(p.margenObjetivo) : null;
+  return {
+    id: p.id,
+    nombre: p.nombre,
+    emoji: p.emoji,
+    fotoUrl: p.fotoUrl ?? null,
+    coste,
+    pvp,
+    foodCost: pvp && pvp > 0 ? (coste / pvp) * 100 : null,
+    margen,
+    margenObjetivo: objetivo,
+    pvpRecomendado: objetivo !== null && objetivo < 100 && coste > 0 ? coste / (1 - objetivo / 100) : null,
+    bajoObjetivo: margen !== null && objetivo !== null && margen < objetivo - 0.05,
+    esPreparacion: p.esPreparacion,
+    tipoPlato: p.tipoPlato,
+    raciones,
+    aviso,
+  };
+}
 
 function costeLinea(l: { cantidad: number | null; precioUnitario: number | null; costeFijo: number | null }): number {
   if (l.costeFijo !== null) return l.costeFijo;
@@ -549,6 +700,13 @@ function mockPlatoResumen(): PlatoResumen[] {
     coste: p.coste,
     pvp: p.pvp,
     foodCost: (p.coste / p.pvp) * 100,
+    margen: ((p.pvp - p.coste) / p.pvp) * 100,
+    margenObjetivo: null,
+    pvpRecomendado: null,
+    bajoObjetivo: false,
+    esPreparacion: false,
+    tipoPlato: "principal" as const,
+    raciones: 1,
     aviso: p.aviso ?? null,
   }));
 }
@@ -560,52 +718,8 @@ export async function getPlatosResumen(): Promise<PlatoResumen[]> {
   try {
     return await conPlazo(
       (async (): Promise<PlatoResumen[]> => {
-        const [filas, lineas, historico] = await Promise.all([
-          db.select().from(schema.platos).where(eq(schema.platos.activo, true)).orderBy(asc(schema.platos.nombre)),
-          db
-            .select({
-              platoId: schema.platoIngredientes.platoId,
-              cantidad: schema.platoIngredientes.cantidad,
-              costeFijo: schema.platoIngredientes.costeFijo,
-              precio: schema.productos.ultimoPrecio,
-              productoNombre: schema.productos.nombre,
-              productoId: schema.platoIngredientes.productoId,
-            })
-            .from(schema.platoIngredientes)
-            .leftJoin(schema.productos, eq(schema.platoIngredientes.productoId, schema.productos.id)),
-          getProductosConHistorico(),
-        ]);
-
-        const variacionPorProducto = new Map(historico.map((p) => [p.id, p.variacion]));
-        const porPlato = new Map<string, { subtotal: number; aviso: string | null }>();
-        for (const l of lineas) {
-          const acc = porPlato.get(l.platoId) ?? { subtotal: 0, aviso: null };
-          acc.subtotal += costeLinea({
-            cantidad: l.cantidad ? Number(l.cantidad) : null,
-            precioUnitario: l.precio ? Number(l.precio) : null,
-            costeFijo: l.costeFijo ? Number(l.costeFijo) : null,
-          });
-          if (!acc.aviso && l.productoId && (variacionPorProducto.get(l.productoId) ?? 0) >= 5) {
-            acc.aviso = `▲ subió ${(l.productoNombre ?? "un ingrediente").toLowerCase()}`;
-          }
-          porPlato.set(l.platoId, acc);
-        }
-
-        return filas.map((p) => {
-          const acc = porPlato.get(p.id) ?? { subtotal: 0, aviso: null };
-          const coste = acc.subtotal * (1 + Number(p.mermaPct) / 100);
-          const pvp = p.pvp !== null ? Number(p.pvp) : null;
-          return {
-            id: p.id,
-            nombre: p.nombre,
-            emoji: p.emoji,
-            fotoUrl: p.fotoUrl ?? null,
-            coste,
-            pvp,
-            foodCost: pvp && pvp > 0 ? (coste / pvp) * 100 : null,
-            aviso: acc.aviso,
-          };
-        });
+        const { filas, subtotales, avisos } = await calcularCostesPlatos(db);
+        return filas.map((p) => aResumen(p, subtotales.get(p.id) ?? 0, avisos.get(p.id) ?? null));
       })(),
       12_000,
     );
@@ -621,19 +735,13 @@ export async function getPlatoDetalle(id: string): Promise<PlatoDetalle | null> 
     const p = PLATOS.find((x) => x.id === id);
     if (!p) return null;
     return {
-      id: p.id,
-      nombre: p.nombre,
-      emoji: p.emoji,
-      fotoUrl: null,
-      coste: p.coste,
-      pvp: p.pvp,
-      foodCost: (p.coste / p.pvp) * 100,
-      aviso: p.aviso ?? null,
+      ...mockPlatoResumen().find((x) => x.id === id)!,
       mermaPct: 0,
       subtotal: p.coste,
       ingredientes: p.ingredientes.map((ing, i) => ({
         id: String(i),
         productoId: null,
+        preparacionId: null,
         nombre: ing.nombre,
         cantidad: null,
         unidad: null,
@@ -642,20 +750,21 @@ export async function getPlatoDetalle(id: string): Promise<PlatoDetalle | null> 
         variacion: 0,
         esFijo: true,
       })),
+      preparacionesDisponibles: [],
     };
   }
 
   try {
     return await conPlazo(
       (async (): Promise<PlatoDetalle | null> => {
-        const [plato] = await db.select().from(schema.platos).where(eq(schema.platos.id, id));
-        if (!plato) return null;
-
-        const [lineas, historico] = await Promise.all([
+        const preps = alias(schema.platos, "preps");
+        const [[plato], lineas, historico, costes] = await Promise.all([
+          db.select().from(schema.platos).where(eq(schema.platos.id, id)),
           db
             .select({
               id: schema.platoIngredientes.id,
               productoId: schema.platoIngredientes.productoId,
+              preparacionId: schema.platoIngredientes.preparacionId,
               descripcion: schema.platoIngredientes.descripcion,
               cantidad: schema.platoIngredientes.cantidad,
               costeFijo: schema.platoIngredientes.costeFijo,
@@ -663,22 +772,42 @@ export async function getPlatoDetalle(id: string): Promise<PlatoDetalle | null> 
               productoNombre: schema.productos.nombre,
               unidad: schema.productos.unidad,
               precio: schema.productos.ultimoPrecio,
+              prepNombre: preps.nombre,
             })
             .from(schema.platoIngredientes)
             .leftJoin(schema.productos, eq(schema.platoIngredientes.productoId, schema.productos.id))
+            .leftJoin(preps, eq(schema.platoIngredientes.preparacionId, preps.id))
             .where(eq(schema.platoIngredientes.platoId, id))
             .orderBy(asc(schema.platoIngredientes.orden), asc(schema.platoIngredientes.createdAt)),
           getProductosConHistorico(),
+          calcularCostesPlatos(db),
         ]);
+        if (!plato) return null;
 
         const variacionPorProducto = new Map(historico.map((p) => [p.id, p.variacion]));
         const ingredientes: IngredientePlato[] = lineas.map((l) => {
           const cantidad = l.cantidad ? Number(l.cantidad) : null;
+          if (l.preparacionId) {
+            const racion = costes.costeRacion.get(l.preparacionId) ?? 0;
+            return {
+              id: l.id,
+              productoId: null,
+              preparacionId: l.preparacionId,
+              nombre: l.prepNombre ?? "Preparación",
+              cantidad,
+              unidad: "ración",
+              precioUnitario: racion,
+              coste: (cantidad ?? 0) * racion,
+              variacion: 0,
+              esFijo: false,
+            };
+          }
           const precioUnitario = l.precio ? Number(l.precio) : null;
           const costeFijo = l.costeFijo ? Number(l.costeFijo) : null;
           return {
             id: l.id,
             productoId: l.productoId,
+            preparacionId: null,
             nombre: l.productoNombre ?? l.descripcion ?? "—",
             cantidad,
             unidad: l.productoId ? (l.unidad ?? "ud") : null,
@@ -690,23 +819,24 @@ export async function getPlatoDetalle(id: string): Promise<PlatoDetalle | null> 
         });
 
         const subtotal = ingredientes.reduce((acc, i) => acc + i.coste, 0);
-        const mermaPct = Number(plato.mermaPct);
-        const coste = subtotal * (1 + mermaPct / 100);
-        const pvp = plato.pvp !== null ? Number(plato.pvp) : null;
+        const resumen = aResumen(plato, subtotal, null);
         const conSubida = ingredientes.find((i) => i.variacion >= 5);
 
         return {
-          id: plato.id,
-          nombre: plato.nombre,
-          emoji: plato.emoji,
-          fotoUrl: plato.fotoUrl ?? null,
-          coste,
-          pvp,
-          foodCost: pvp && pvp > 0 ? (coste / pvp) * 100 : null,
+          ...resumen,
           aviso: conSubida ? `▲ subió ${conSubida.nombre.toLowerCase()}` : null,
-          mermaPct,
+          mermaPct: Number(plato.mermaPct),
           subtotal,
           ingredientes,
+          preparacionesDisponibles: plato.esPreparacion
+            ? []
+            : costes.filas
+                .filter((p) => p.esPreparacion && p.id !== id)
+                .map((p) => ({
+                  id: p.id,
+                  nombre: p.nombre,
+                  costeRacion: costes.costeRacion.get(p.id) ?? 0,
+                })),
         };
       })(),
       12_000,

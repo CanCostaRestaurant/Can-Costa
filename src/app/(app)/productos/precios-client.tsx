@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { type Producto } from "@/lib/mock";
-import { cn } from "@/lib/utils";
+import { cn, eur } from "@/lib/utils";
+import { fijarPrecioPactado } from "./actions";
 
 type Familia = "todos" | "subida" | Producto["familia"];
 
@@ -12,12 +14,21 @@ function normaliza(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+function esSubida(p: Producto): boolean {
+  return p.enAlza ?? p.variacion >= 5;
+}
+
 export function PreciosClient({ productos }: { productos: Producto[] }) {
   const [busqueda, setBusqueda] = useState("");
   const [familia, setFamilia] = useState<Familia>("todos");
+  const [fProveedor, setFProveedor] = useState("");
   const [seleccionadoId, setSeleccionadoId] = useState<string | null>(productos[0]?.id ?? null);
 
-  const conSubida = productos.filter((p) => p.variacion >= 5).length;
+  const conSubida = productos.filter(esSubida).length;
+  const proveedoresUnicos = useMemo(
+    () => [...new Set(productos.map((p) => p.proveedor).filter((p) => p !== "—"))].sort((a, b) => a.localeCompare(b)),
+    [productos],
+  );
 
   const FAMILIAS: { id: Familia; label: string }[] = [
     { id: "todos", label: "Todos" },
@@ -31,12 +42,13 @@ export function PreciosClient({ productos }: { productos: Producto[] }) {
   const visibles = useMemo(() => {
     const q = normaliza(busqueda.trim());
     return productos.filter((p) => {
-      if (familia === "subida" && p.variacion < 5) return false;
+      if (familia === "subida" && !esSubida(p)) return false;
       if (familia !== "todos" && familia !== "subida" && p.familia !== familia) return false;
+      if (fProveedor && p.proveedor !== fProveedor) return false;
       if (q && !normaliza(`${p.nombre} ${p.proveedor}`).includes(q)) return false;
       return true;
     });
-  }, [productos, busqueda, familia]);
+  }, [productos, busqueda, familia, fProveedor]);
 
   const seleccionado = productos.find((p) => p.id === seleccionadoId) ?? null;
 
@@ -51,6 +63,21 @@ export function PreciosClient({ productos }: { productos: Producto[] }) {
             placeholder="Buscar producto… (merluza, aceite, tomate)"
             className="flex-1 bg-transparent text-[14.5px] outline-none placeholder:text-ink-soft/60"
           />
+          <select
+            value={fProveedor}
+            onChange={(e) => setFProveedor(e.target.value)}
+            className={cn(
+              "max-w-44 rounded-lg border border-line bg-card px-2 py-1.5 text-[13px] outline-none focus:border-brand",
+              fProveedor ? "font-semibold" : "text-ink-soft",
+            )}
+          >
+            <option value="">Todos los proveedores</option>
+            {proveedoresUnicos.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="mb-3.5 flex flex-wrap gap-2">
@@ -128,7 +155,7 @@ export function PreciosClient({ productos }: { productos: Producto[] }) {
       </div>
 
       {seleccionado ? (
-        <HistPanel producto={seleccionado} />
+        <HistPanel key={seleccionado.id} producto={seleccionado} />
       ) : (
         <div className="card p-5.5 text-sm text-ink-soft max-md:hidden">
           Selecciona un producto para ver su histórico de compra.
@@ -174,6 +201,12 @@ function Sparkline({ hist, variacion }: { hist: number[]; variacion: number }) {
 }
 
 function HistPanel({ producto: p }: { producto: Producto }) {
+  const router = useRouter();
+  const [, startPactado] = useTransition();
+  const [textoPactado, setTextoPactado] = useState(
+    p.precioPactado !== null && p.precioPactado !== undefined ? String(p.precioPactado) : "",
+  );
+
   const min = Math.min(...p.hist);
   const max = Math.max(...p.hist);
   const rng = max - min || 1;
@@ -187,14 +220,66 @@ function HistPanel({ producto: p }: { producto: Producto }) {
   const linea = pts.map((pt) => `${pt.x},${pt.y}`).join(" ");
   const color = colorVariacion(p.variacion);
 
+  function guardarPactado() {
+    const limpio = textoPactado.trim().replace(",", ".");
+    const valor = limpio === "" ? null : parseFloat(limpio);
+    const previo = p.precioPactado ?? null;
+    if (valor === previo || (valor !== null && !Number.isFinite(valor))) return;
+    startPactado(async () => {
+      await fijarPrecioPactado(p.id, valor);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="card sticky top-6 p-5.5 max-md:static">
       <div className="text-xs font-semibold tracking-wider text-ink-soft uppercase">Histórico de compra</div>
       <h3 className="mt-2 font-display text-base font-bold tracking-tight">{p.nombre}</h3>
-      <div className="font-display text-[34px] font-bold tracking-tight">{p.precio.split(" ")[0]} €</div>
-      <div className="mb-4.5 text-[13px] text-ink-soft">
+      <div
+        className={cn(
+          "font-display text-[34px] font-bold tracking-tight",
+          p.enAlza === true && "text-bad",
+          p.enAlza === false && "text-good",
+        )}
+      >
+        {p.precio.split(" ")[0]} €
+        {p.enAlza !== undefined && (
+          <span className="ml-1.5 align-middle text-[15px]">{p.enAlza ? "▲" : "▼"}</span>
+        )}
+      </div>
+      <div className="mb-3.5 text-[13px] text-ink-soft">
         {p.proveedor} · última compra {p.ultimaCompra}
       </div>
+
+      {p.nCompras !== undefined && p.nCompras > 0 && (
+        <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-xl border border-line px-3.5 py-3">
+          <Dato etiqueta="Precio de referencia*" valor={p.referencia !== null && p.referencia !== undefined ? eur(p.referencia) : "—"} />
+          <Dato etiqueta="Compras" valor={String(p.nCompras)} />
+          <Dato etiqueta="Máximo" valor={p.maximo !== null && p.maximo !== undefined ? eur(p.maximo) : "—"} />
+          <Dato etiqueta="Mínimo" valor={p.minimo !== null && p.minimo !== undefined ? eur(p.minimo) : "—"} />
+          <div className="col-span-2 border-t border-line pt-2.5">
+            <div className="text-[11px] font-semibold tracking-wider text-ink-soft uppercase">
+              Precio pactado con el proveedor
+            </div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={textoPactado}
+                onChange={(e) => setTextoPactado(e.target.value)}
+                onBlur={guardarPactado}
+                placeholder="sin pactar"
+                className="w-24 rounded-lg border border-line bg-card px-2 py-1 text-sm outline-none placeholder:text-ink-soft/50 focus:border-brand"
+              />
+              <span className="text-xs text-ink-soft">€/{p.unidad ?? "ud"} · manda sobre la referencia</span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-snug text-ink-soft">
+              *media ponderada de tus compras. Última compra por encima → rojo; por debajo → verde.
+            </p>
+          </div>
+        </div>
+      )}
 
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-[130px] w-full overflow-visible">
         <polygon points={`${pad},${H} ${linea} ${W - pad},${H}`} fill={color} opacity="0.08" />
@@ -227,6 +312,15 @@ function HistPanel({ producto: p }: { producto: Producto }) {
         className="mt-4 rounded-xl bg-brand-soft px-3.5 py-3 text-[13px] leading-relaxed text-[#8C3A22]"
         dangerouslySetInnerHTML={{ __html: p.nota }}
       />
+    </div>
+  );
+}
+
+function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold tracking-wider text-ink-soft uppercase">{etiqueta}</div>
+      <div className="font-display text-[15px] font-bold">{valor}</div>
     </div>
   );
 }

@@ -24,8 +24,10 @@ function tonoFoodCost(fc: number | null): "good" | "warn" | "bad" | "gray" {
 }
 
 export default async function EscandallosPage() {
-  const platos = await getPlatosResumen();
-  const conAviso = platos.filter((p) => p.aviso);
+  const todos = await getPlatosResumen();
+  const platos = todos.filter((p) => !p.esPreparacion);
+  const preparaciones = todos.filter((p) => p.esPreparacion);
+  const conAviso = todos.filter((p) => p.aviso);
 
   return (
     <section className="anim-in">
@@ -98,6 +100,14 @@ export default async function EscandallosPage() {
                   {plato.foodCost !== null ? `${pct(plato.foodCost, 0)} food cost` : "sin PVP"}
                 </Chip>
               </div>
+              {plato.margenObjetivo !== null && plato.margen !== null && (
+                <div
+                  className={`mt-2 text-[12px] font-semibold ${plato.bajoObjetivo ? "text-bad" : "text-good"}`}
+                >
+                  margen {pct(plato.margen, 0)} · esperado {pct(plato.margenObjetivo, 0)}
+                  {plato.bajoObjetivo ? " ⚠" : " ✓"}
+                </div>
+              )}
             </div>
           </Link>
         ))}
@@ -107,6 +117,39 @@ export default async function EscandallosPage() {
           </div>
         )}
       </div>
+
+      {preparaciones.length > 0 && (
+        <>
+          <h3 className="mt-7 mb-3 font-display text-[17px] font-bold tracking-tight">
+            Preparaciones
+            <span className="ml-2 font-body text-[12.5px] font-normal text-ink-soft">
+              sub-recetas que se usan como ingrediente en tus platos
+            </span>
+          </h3>
+          <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-2 max-sm:grid-cols-1">
+            {preparaciones.map((prep) => (
+              <Link
+                key={prep.id}
+                href={`/escandallos/${prep.id}`}
+                className="card flex items-center gap-3 p-4 transition-all hover:-translate-y-0.5 hover:shadow-(--shadow-lift)"
+              >
+                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-chip text-[22px]">
+                  {prep.emoji}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <b className="block truncate font-display text-[14.5px] font-bold tracking-tight">
+                    {prep.nombre}
+                  </b>
+                  <small className="text-[12px] text-ink-soft">
+                    {eur(prep.coste)}/ración · salen {prep.raciones}
+                  </small>
+                </span>
+                {prep.aviso && <Chip tone="bad">▲</Chip>}
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
     </section>
   );
 }

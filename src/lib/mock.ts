@@ -126,6 +126,15 @@ export type Producto = {
   hist: number[];
   meses: string[];
   nota: string;
+  // Ficha pro (solo llegan desde BD):
+  unidad?: string;
+  ultimoNum?: number | null;
+  referencia?: number | null; // media ponderada de las compras
+  maximo?: number | null;
+  minimo?: number | null;
+  nCompras?: number;
+  precioPactado?: number | null; // tarifa acordada; manda sobre la referencia
+  enAlza?: boolean; // última compra por encima de pactado/referencia → rojo
 };
 
 export const PRODUCTOS: Producto[] = [

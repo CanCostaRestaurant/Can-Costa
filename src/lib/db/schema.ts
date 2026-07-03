@@ -108,6 +108,7 @@ export const productos = pgTable(
     // Denormalizados para lectura rápida de la tabla de Precios (evita N+1):
     ultimoPrecio: numeric("ultimo_precio", { precision: 12, scale: 4 }),
     ultimaCompra: date("ultima_compra"),
+    precioPactado: numeric("precio_pactado", { precision: 12, scale: 4 }), // tarifa acordada con el proveedor; null = usar referencia
     activo: boolean("activo").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -226,13 +227,19 @@ export const ventasDia = pgTable("ventas_dia", {
 // platos  (escandallos: coste = Σ ingredientes × último precio + merma)
 // ---------------------------------------------------------------------
 
+export const platoTipoEnum = pgEnum("plato_tipo", ["entrante", "principal", "postre", "bebida", "otro"]);
+
 export const platos = pgTable("platos", {
   id: uuid("id").primaryKey().defaultRandom(),
   nombre: text("nombre").notNull(),
   emoji: text("emoji").notNull().default("🍽️"), // fallback visual cuando no hay foto
   fotoUrl: text("foto_url"), // foto del plato: data URL comprimida (sin Storage aún)
+  tipoPlato: platoTipoEnum("tipo_plato").notNull().default("principal"),
+  esPreparacion: boolean("es_preparacion").notNull().default(false), // sub-receta (vinagreta…): usable como ingrediente, sin PVP
   pvp: numeric("pvp", { precision: 12, scale: 2 }), // precio en carta; null = sin fijar
   mermaPct: numeric("merma_pct", { precision: 5, scale: 2 }).notNull().default("10"),
+  margenObjetivo: numeric("margen_objetivo", { precision: 5, scale: 2 }), // % de margen esperado; null = sin objetivo
+  raciones: numeric("raciones", { precision: 8, scale: 2 }).notNull().default("1"), // raciones que salen de la receta
   activo: boolean("activo").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -249,8 +256,9 @@ export const platoIngredientes = pgTable(
       .notNull()
       .references(() => platos.id, { onDelete: "cascade" }),
     productoId: uuid("producto_id").references(() => productos.id, { onDelete: "set null" }),
+    preparacionId: uuid("preparacion_id").references(() => platos.id, { onDelete: "set null" }), // sub-receta como ingrediente
     descripcion: text("descripcion"),
-    cantidad: numeric("cantidad", { precision: 12, scale: 3 }), // en la unidad del producto
+    cantidad: numeric("cantidad", { precision: 12, scale: 3 }), // en la unidad del producto (o raciones de la preparación)
     costeFijo: numeric("coste_fijo", { precision: 12, scale: 4 }),
     orden: integer("orden"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

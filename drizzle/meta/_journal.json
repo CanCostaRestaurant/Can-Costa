@@ -71,6 +71,13 @@
       "when": 1783068844508,
       "tag": "0009_hard_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783069336687,
+      "tag": "0010_hard_vin_gonzales",
+      "breakpoints": true
     }
   ]
 }

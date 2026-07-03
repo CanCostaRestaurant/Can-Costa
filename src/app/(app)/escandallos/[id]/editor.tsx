@@ -29,13 +29,21 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
   const [emoji, setEmoji] = useState(plato.emoji);
   const [pvpTexto, setPvpTexto] = useState(plato.pvp !== null ? String(plato.pvp) : "");
   const [mermaTexto, setMermaTexto] = useState(String(plato.mermaPct));
+  const [racionesTexto, setRacionesTexto] = useState(String(plato.raciones));
+  const [margenObjTexto, setMargenObjTexto] = useState(
+    plato.margenObjetivo !== null ? String(plato.margenObjetivo) : "",
+  );
 
   // Alta de ingrediente
   const [nuevoProductoId, setNuevoProductoId] = useState("");
   const [nuevaCantidad, setNuevaCantidad] = useState("");
   const [nuevaDescripcion, setNuevaDescripcion] = useState("");
   const [nuevoImporte, setNuevoImporte] = useState("");
+  const [nuevaPrepId, setNuevaPrepId] = useState("");
+  const [nuevaPrepCant, setNuevaPrepCant] = useState("");
   const [confirmarBorrado, setConfirmarBorrado] = useState(false);
+
+  const costeLote = plato.coste * plato.raciones;
 
   // Food cost en vivo mientras se teclea el PVP
   const pvpActual = parseFloat(pvpTexto.replace(",", ".")) || null;
@@ -81,6 +89,55 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
               aria-label="Nombre del plato"
             />
             <p className="mt-0.5 text-sm text-ink-soft">El coste se actualiza solo con cada factura que validas</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <select
+                value={plato.tipoPlato}
+                onChange={(e) =>
+                  ejecutar(() =>
+                    actualizarPlato(plato.id, {
+                      tipoPlato: e.target.value as "entrante" | "principal" | "postre" | "bebida" | "otro",
+                    }),
+                  )
+                }
+                className="rounded-lg border border-line bg-card px-2 py-1 text-[12.5px] font-semibold capitalize outline-none focus:border-brand"
+              >
+                {["entrante", "principal", "postre", "bebida", "otro"].map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => ejecutar(() => actualizarPlato(plato.id, { esPreparacion: !plato.esPreparacion }))}
+                title="Una preparación (vinagreta, sofrito…) se usa como ingrediente en otros platos"
+                className={cn(
+                  "cursor-pointer rounded-lg border px-2.5 py-1 text-[12.5px] font-semibold transition-colors",
+                  plato.esPreparacion
+                    ? "border-brand bg-brand-soft text-brand"
+                    : "border-line text-ink-soft hover:border-[#CFC6B4]",
+                )}
+              >
+                {plato.esPreparacion ? "★ Preparación" : "Marcar como preparación"}
+              </button>
+              <span className="flex items-center gap-1 text-[12.5px] text-ink-soft">
+                salen
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  value={racionesTexto}
+                  onChange={(e) => setRacionesTexto(e.target.value)}
+                  onBlur={() => {
+                    const v = parseFloat(racionesTexto.replace(",", "."));
+                    if (Number.isFinite(v) && v > 0 && v !== plato.raciones) {
+                      ejecutar(() => actualizarPlato(plato.id, { raciones: v }));
+                    }
+                  }}
+                  className="w-14 rounded-lg border border-line bg-card px-1.5 py-0.5 text-center text-[12.5px] outline-none focus:border-brand"
+                />
+                {parseFloat(racionesTexto) === 1 ? "ración" : "raciones"}
+              </span>
+            </div>
           </div>
         </div>
         <button
@@ -236,6 +293,58 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
                 </td>
               </tr>
 
+              {/* Alta: preparación (sub-receta) como ingrediente */}
+              {!plato.esPreparacion && plato.preparacionesDisponibles.length > 0 && (
+                <tr className="border-b border-line bg-hover/60">
+                  <td className="px-3.5 py-2.5" colSpan={2}>
+                    <select
+                      value={nuevaPrepId}
+                      onChange={(e) => setNuevaPrepId(e.target.value)}
+                      className="w-full rounded-lg border border-line bg-card px-2.5 py-2 text-sm outline-none focus:border-brand"
+                    >
+                      <option value="">+ Añadir preparación (vinagreta, sofrito…)</option>
+                      {plato.preparacionesDisponibles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nombre} · {eur(p.costeRacion)}/ración
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-3.5 py-2.5">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      placeholder="raciones"
+                      value={nuevaPrepCant}
+                      onChange={(e) => setNuevaPrepCant(e.target.value)}
+                      className="w-24 rounded-lg border border-line bg-card px-2.5 py-2 text-sm outline-none focus:border-brand"
+                    />
+                  </td>
+                  <td className="px-3.5 py-2.5" colSpan={2}>
+                    <button
+                      onClick={() =>
+                        ejecutar(async () => {
+                          const res = await agregarIngrediente(plato.id, {
+                            preparacionId: nuevaPrepId,
+                            cantidad: parseFloat(nuevaPrepCant.replace(",", ".")),
+                          });
+                          if (res.ok) {
+                            setNuevaPrepId("");
+                            setNuevaPrepCant("");
+                          }
+                          return res;
+                        })
+                      }
+                      disabled={!nuevaPrepId || !nuevaPrepCant || ocupado}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-ink px-3 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-black disabled:opacity-40"
+                    >
+                      <Plus className="size-3.5" /> Añadir
+                    </button>
+                  </td>
+                </tr>
+              )}
+
               {/* Alta: línea fija */}
               <tr className="border-b border-line bg-hover/60">
                 <td className="px-3.5 py-2.5" colSpan={2}>
@@ -311,12 +420,22 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
                   </span>
                 </td>
                 <td colSpan={2} className="px-3.5 py-2.5 font-display text-sm font-semibold">
-                  {eur(plato.coste - plato.subtotal)}
+                  {eur(costeLote - plato.subtotal)}
                 </td>
               </tr>
+              {plato.raciones !== 1 && (
+                <tr className="border-b border-line">
+                  <td colSpan={3} className="px-3.5 py-2.5 text-sm text-ink-soft">
+                    Coste del lote ({plato.raciones} raciones)
+                  </td>
+                  <td colSpan={2} className="px-3.5 py-2.5 font-display text-sm font-semibold">
+                    {eur(costeLote)}
+                  </td>
+                </tr>
+              )}
               <tr>
                 <td colSpan={3} className="px-3.5 py-3 font-display text-sm font-bold">
-                  Coste total del plato
+                  {plato.esPreparacion ? "Coste por ración de la preparación" : "Coste por ración"}
                 </td>
                 <td colSpan={2} className="px-3.5 py-3 font-display text-[17px] font-bold">
                   {eur(plato.coste)}
@@ -326,6 +445,18 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
           </table>
         </div>
 
+        {plato.esPreparacion ? (
+          <div className="card p-5.5">
+            <div className="text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">Preparación</div>
+            <div className="mt-2 font-display text-4xl font-bold tracking-tight">{eur(plato.coste)}</div>
+            <div className="mt-1 text-[13px] text-ink-soft">coste por ración</div>
+            <p className="mt-4 rounded-xl bg-chip px-3.5 py-3 text-[13px] leading-relaxed text-ink-soft">
+              Esta receta no se vende en carta: úsala como <b className="text-ink">ingrediente</b> dentro de otros
+              platos. Cuando suba el precio de sus productos, el coste se propaga solo a todos los platos que la
+              llevan.
+            </p>
+          </div>
+        ) : (
         <div className="card p-5.5">
           <div className="text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">Precio en carta</div>
           <div className="mt-2 mb-1.5 flex items-baseline gap-1.5">
@@ -379,7 +510,74 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
               <b className="font-display font-bold">{eur(plato.coste / (OBJETIVO / 100))}</b>
             </div>
           </div>
+
+          {/* Margen esperado (haddock): fija un % y te recomienda el PVP */}
+          <div className="mt-4.5 border-t border-line pt-3.5">
+            <div className="text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
+              Margen esperado
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="number"
+                step="1"
+                min="0"
+                max="99"
+                value={margenObjTexto}
+                placeholder="—"
+                onChange={(e) => setMargenObjTexto(e.target.value)}
+                onBlur={() => {
+                  const limpio = margenObjTexto.trim().replace(",", ".");
+                  const v = limpio === "" ? null : parseFloat(limpio);
+                  if (v !== (plato.margenObjetivo ?? null) && (v === null || Number.isFinite(v))) {
+                    ejecutar(() => actualizarPlato(plato.id, { margenObjetivo: v }));
+                  }
+                }}
+                className="w-16 rounded-lg border border-line bg-card px-2 py-1.5 text-center font-display text-[17px] font-bold outline-none focus:border-brand"
+              />
+              <span className="text-sm text-ink-soft">% de margen que quieres sacarle</span>
+            </div>
+            {plato.margenObjetivo !== null && (
+              <div className="mt-3 flex flex-col gap-2 text-[13.5px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-ink-soft">Margen actual</span>
+                  <b
+                    className={cn(
+                      "font-display text-[15px] font-bold",
+                      plato.margen === null ? "" : plato.bajoObjetivo ? "text-bad" : "text-good",
+                    )}
+                  >
+                    {plato.margen !== null ? pct(plato.margen) : "—"}
+                  </b>
+                </div>
+                {plato.pvpRecomendado !== null && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-ink-soft">PVP recomendado</span>
+                    <span className="flex items-center gap-2">
+                      <b className="font-display text-[15px] font-bold">{eur(plato.pvpRecomendado)}</b>
+                      <button
+                        onClick={() => {
+                          const redondo = Math.round(plato.pvpRecomendado! * 100) / 100;
+                          setPvpTexto(String(redondo));
+                          ejecutar(() => actualizarPlato(plato.id, { pvp: redondo }));
+                        }}
+                        disabled={ocupado}
+                        className="cursor-pointer rounded-lg bg-brand px-2.5 py-1 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                      >
+                        Aplicar
+                      </button>
+                    </span>
+                  </div>
+                )}
+                {plato.bajoObjetivo && (
+                  <p className="rounded-lg bg-bad-soft px-2.5 py-2 text-[12.5px] font-semibold text-bad">
+                    Estás por debajo del margen esperado: sube el PVP o revisa los ingredientes.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
+        )}
       </div>
     </>
   );

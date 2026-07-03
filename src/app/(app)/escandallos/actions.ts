@@ -39,7 +39,16 @@ export async function crearPlato(): Promise<Resultado> {
 
 export async function actualizarPlato(
   id: string,
-  datos: { nombre?: string; emoji?: string; pvp?: number | null; mermaPct?: number },
+  datos: {
+    nombre?: string;
+    emoji?: string;
+    pvp?: number | null;
+    mermaPct?: number;
+    margenObjetivo?: number | null;
+    tipoPlato?: "entrante" | "principal" | "postre" | "bebida" | "otro";
+    esPreparacion?: boolean;
+    raciones?: number;
+  },
 ): Promise<Resultado> {
   const db = getDb();
   if (!db) return SIN_BD;
@@ -61,6 +70,37 @@ export async function actualizarPlato(
       return { ok: false, error: "La merma debe estar entre 0 y 100%" };
     }
     set.mermaPct = datos.mermaPct.toFixed(2);
+  }
+  if (datos.margenObjetivo !== undefined) {
+    if (datos.margenObjetivo !== null && (!Number.isFinite(datos.margenObjetivo) || datos.margenObjetivo < 0 || datos.margenObjetivo >= 100)) {
+      return { ok: false, error: "El margen esperado debe estar entre 0 y 99%" };
+    }
+    set.margenObjetivo = datos.margenObjetivo === null ? null : datos.margenObjetivo.toFixed(2);
+  }
+  if (datos.tipoPlato !== undefined) {
+    if (!["entrante", "principal", "postre", "bebida", "otro"].includes(datos.tipoPlato)) {
+      return { ok: false, error: "Tipo de plato no válido" };
+    }
+    set.tipoPlato = datos.tipoPlato;
+  }
+  if (datos.esPreparacion !== undefined) {
+    // Una preparación no puede contener otras preparaciones: si el plato ya
+    // usa alguna, no se puede convertir.
+    if (datos.esPreparacion) {
+      const lineas = await conPlazo(
+        db.select().from(schema.platoIngredientes).where(eq(schema.platoIngredientes.platoId, id)),
+      );
+      if (lineas.some((l) => l.preparacionId)) {
+        return { ok: false, error: "Este plato usa preparaciones: quítalas antes de convertirlo en preparación" };
+      }
+    }
+    set.esPreparacion = datos.esPreparacion;
+  }
+  if (datos.raciones !== undefined) {
+    if (!Number.isFinite(datos.raciones) || datos.raciones <= 0) {
+      return { ok: false, error: "Las raciones deben ser mayores que 0" };
+    }
+    set.raciones = datos.raciones.toFixed(2);
   }
 
   try {
@@ -116,13 +156,20 @@ export async function eliminarPlato(id: string): Promise<Resultado> {
 
 export async function agregarIngrediente(
   platoId: string,
-  datos: { productoId?: string; cantidad?: number; descripcion?: string; costeFijo?: number },
+  datos: {
+    productoId?: string;
+    preparacionId?: string;
+    cantidad?: number;
+    descripcion?: string;
+    costeFijo?: number;
+  },
 ): Promise<Resultado> {
   const db = getDb();
   if (!db) return SIN_BD;
 
   const esProducto = Boolean(datos.productoId);
-  if (esProducto) {
+  const esPreparacion = Boolean(datos.preparacionId);
+  if (esProducto || esPreparacion) {
     if (!datos.cantidad || !Number.isFinite(datos.cantidad) || datos.cantidad <= 0) {
       return { ok: false, error: "Indica la cantidad del ingrediente" };
     }
@@ -134,13 +181,28 @@ export async function agregarIngrediente(
   }
 
   try {
+    if (esPreparacion) {
+      // Solo UN nivel: un plato usa preparaciones, una preparación no.
+      if (datos.preparacionId === platoId) return { ok: false, error: "Un plato no puede contenerse a sí mismo" };
+      const [[plato], [prep]] = await Promise.all([
+        conPlazo(db.select().from(schema.platos).where(eq(schema.platos.id, platoId))),
+        conPlazo(db.select().from(schema.platos).where(eq(schema.platos.id, datos.preparacionId!))),
+      ]);
+      if (!plato || !prep) return { ok: false, error: "Plato o preparación no encontrados" };
+      if (plato.esPreparacion) {
+        return { ok: false, error: "Una preparación no puede contener otras preparaciones" };
+      }
+      if (!prep.esPreparacion) return { ok: false, error: "Ese plato no está marcado como preparación" };
+    }
+
     await conPlazo(
       db.insert(schema.platoIngredientes).values({
         platoId,
         productoId: esProducto ? datos.productoId : null,
-        cantidad: esProducto ? datos.cantidad!.toFixed(3) : null,
-        descripcion: esProducto ? null : datos.descripcion!.trim(),
-        costeFijo: esProducto ? null : datos.costeFijo!.toFixed(4),
+        preparacionId: esPreparacion ? datos.preparacionId : null,
+        cantidad: esProducto || esPreparacion ? datos.cantidad!.toFixed(3) : null,
+        descripcion: esProducto || esPreparacion ? null : datos.descripcion!.trim(),
+        costeFijo: esProducto || esPreparacion ? null : datos.costeFijo!.toFixed(4),
         orden: 99,
       }),
     );
