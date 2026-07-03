@@ -1029,3 +1029,86 @@ export async function getDesgloseDia(fecha: string): Promise<DesgloseDia> {
     return vacio;
   }
 }
+
+// ---------------------------------------------------------------------
+// Reservas (cover manager)
+// ---------------------------------------------------------------------
+
+export type ReservaDia = {
+  id: string;
+  nombre: string;
+  telefono: string | null;
+  comensales: number;
+  hora: string; // "HH:MM"
+  duracionMin: number;
+  zonaPreferida: "sala" | "terraza" | "barra" | null;
+  mesaId: string | null;
+  mesaNombre: string | null;
+  estado: string;
+  notas: string | null;
+};
+
+export type DiaReservas = {
+  fecha: string;
+  reservas: ReservaDia[];
+  totalComensales: number;
+  sinMesa: number;
+  plazasTotales: number;
+  mesas: { id: string; nombre: string; zona: "sala" | "terraza" | "barra"; capacidad: number }[];
+};
+
+export async function getReservasDia(fecha: string): Promise<DiaReservas> {
+  const vacio: DiaReservas = {
+    fecha,
+    reservas: [],
+    totalComensales: 0,
+    sinMesa: 0,
+    plazasTotales: 0,
+    mesas: [],
+  };
+  const db = getDb();
+  if (!db) return vacio;
+
+  try {
+    return await conPlazo(
+      (async (): Promise<DiaReservas> => {
+        const [filas, mesasActivas] = await Promise.all([
+          db
+            .select({ reserva: schema.reservas, mesaNombre: schema.mesas.nombre })
+            .from(schema.reservas)
+            .leftJoin(schema.mesas, eq(schema.reservas.mesaId, schema.mesas.id))
+            .where(eq(schema.reservas.fecha, fecha))
+            .orderBy(asc(schema.reservas.hora)),
+          db.select().from(schema.mesas).where(eq(schema.mesas.activo, true)).orderBy(asc(schema.mesas.orden)),
+        ]);
+
+        const reservasDia: ReservaDia[] = filas.map((f) => ({
+          id: f.reserva.id,
+          nombre: f.reserva.nombre,
+          telefono: f.reserva.telefono,
+          comensales: f.reserva.comensales,
+          hora: f.reserva.hora.slice(0, 5),
+          duracionMin: f.reserva.duracionMin,
+          zonaPreferida: f.reserva.zonaPreferida,
+          mesaId: f.reserva.mesaId,
+          mesaNombre: f.mesaNombre,
+          estado: f.reserva.estado,
+          notas: f.reserva.notas,
+        }));
+
+        const activas = reservasDia.filter((r) => r.estado === "confirmada" || r.estado === "sentada");
+        return {
+          fecha,
+          reservas: reservasDia,
+          totalComensales: activas.reduce((a, r) => a + r.comensales, 0),
+          sinMesa: activas.filter((r) => !r.mesaId).length,
+          plazasTotales: mesasActivas.reduce((a, m) => a + m.capacidad, 0),
+          mesas: mesasActivas.map((m) => ({ id: m.id, nombre: m.nombre, zona: m.zona, capacidad: m.capacidad })),
+        };
+      })(),
+    );
+  } catch (e) {
+    logFallo("getReservasDia", e);
+    return vacio;
+  }
+}

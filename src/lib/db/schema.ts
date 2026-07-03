@@ -22,6 +22,7 @@ import {
   integer,
   numeric,
   date,
+  time,
   jsonb,
   pgEnum,
   index,
@@ -253,6 +254,38 @@ export const ticketLineas = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("ticket_lineas_ticket_idx").on(t.ticketId)],
+);
+
+// ---------------------------------------------------------------------
+// RESERVAS (cover manager): asignación de mesa vía lib/reservas/asignador
+// ---------------------------------------------------------------------
+
+export const reservaEstadoEnum = pgEnum("reserva_estado", [
+  "confirmada",
+  "sentada",
+  "no_show",
+  "cancelada",
+]);
+
+export const reservas = pgTable(
+  "reservas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    nombre: text("nombre").notNull(),
+    telefono: text("telefono"),
+    comensales: integer("comensales").notNull(),
+    fecha: date("fecha").notNull(),
+    hora: time("hora").notNull(),
+    duracionMin: integer("duracion_min").notNull().default(90),
+    zonaPreferida: mesaZonaEnum("zona_preferida"), // null = sin preferencia
+    mesaId: uuid("mesa_id").references(() => mesas.id, { onDelete: "set null" }), // null = sin mesa (aviso)
+    estado: reservaEstadoEnum("estado").notNull().default("confirmada"),
+    notas: text("notas"),
+    origen: text("origen").notNull().default("manual"), // futuro: 'web'
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("reservas_fecha_idx").on(t.fecha), index("reservas_mesa_idx").on(t.mesaId)],
 );
 
 // ---------------------------------------------------------------------

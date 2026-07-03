@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Apple,
+  CalendarDays,
   ChartColumn,
   ChefHat,
   Coins,
@@ -27,7 +28,8 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
     titulo: "Negocio",
     items: [
       { href: "/", label: "Home", icon: Home },
-      { href: "/tpv", label: "TPV", icon: Tablet, chip: "nuevo" },
+      { href: "/tpv", label: "TPV", icon: Tablet },
+      { href: "/reservas", label: "Reservas", icon: CalendarDays, chip: "nuevo" },
       { href: "/dashboard", label: "Dashboard", icon: ChartColumn },
       { href: "/ventas", label: "Ventas", icon: Coins },
       { href: "/escandallos", label: "Escandallos", icon: ChefHat },
