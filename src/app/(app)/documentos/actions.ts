@@ -1,9 +1,21 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
 import { extraerFactura } from "@/lib/ia/extraer-factura";
+
+const CATEGORIAS_GASTO = [
+  "materia_prima",
+  "bebidas",
+  "limpieza",
+  "consumibles",
+  "gestoria",
+  "alquiler",
+  "suministros",
+  "otros",
+] as const;
+type CategoriaGasto = (typeof CATEGORIAS_GASTO)[number];
 
 const TIPOS_SOPORTADOS = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
 const TAMANO_MAXIMO = 7 * 1024 * 1024;
@@ -178,33 +190,77 @@ export async function procesarDocumento(formData: FormData): Promise<{ ok: boole
       120_000, // la lectura con visión puede tardar
     );
 
-    // Proveedor: id conocido → usarlo; nombre nuevo → alta automática.
+    // Proveedor: id conocido → usarlo; nombre nuevo → alta automática con la
+    // categoría de gasto que haya inferido la IA.
     const idsProveedores = new Set(proveedoresConocidos.map((p) => p.id));
     let proveedorId = datos.proveedor_id && idsProveedores.has(datos.proveedor_id) ? datos.proveedor_id : null;
     if (!proveedorId && datos.proveedor?.trim()) {
+      const categoriaNueva = CATEGORIAS_GASTO.includes(datos.categoria_proveedor as CategoriaGasto)
+        ? (datos.categoria_proveedor as CategoriaGasto)
+        : "materia_prima";
       const [nuevo] = await conPlazo(
         db
           .insert(schema.proveedores)
-          .values({ nombre: datos.proveedor.trim() })
+          .values({ nombre: datos.proveedor.trim(), categoria: categoriaNueva })
           .returning({ id: schema.proveedores.id }),
       );
       proveedorId = nuevo.id;
     }
 
     const fechaValida = datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha) ? datos.fecha : null;
+    const tipo = datos.tipo === "albaran" || datos.tipo === "ticket" ? datos.tipo : "factura";
+    const numero = datos.numero?.slice(0, 60) ?? null;
+    const totalTxt = numeroSano(datos.total)?.toFixed(2) ?? null;
+
+    // Duplicados (error no subsanable, como haddock): mismo proveedor y mismo
+    // nº de documento, o misma fecha + mismo importe → carpeta Rechazadas.
+    let motivoRechazo: string | null = null;
+    if (proveedorId) {
+      const previas = await conPlazo(
+        db
+          .select({
+            numero: schema.facturas.numero,
+            fecha: schema.facturas.fecha,
+            total: schema.facturas.total,
+          })
+          .from(schema.facturas)
+          .where(
+            and(
+              eq(schema.facturas.proveedorId, proveedorId),
+              ne(schema.facturas.id, facturaId),
+              ne(schema.facturas.estado, "rechazada"),
+              ne(schema.facturas.estado, "error"),
+            ),
+          ),
+      );
+      const dup = previas.find(
+        (p) =>
+          (numero && p.numero === numero) ||
+          (fechaValida && totalTxt && p.fecha === fechaValida && p.total === totalTxt),
+      );
+      if (dup) {
+        motivoRechazo =
+          numero && dup.numero === numero
+            ? `Ya existe un documento de este proveedor con el número ${numero}`
+            : `Ya existe un documento de este proveedor con la misma fecha y el mismo importe (${totalTxt} €)`;
+      }
+    }
+
     await conPlazo(
       db
         .update(schema.facturas)
         .set({
           proveedorId,
           proveedorTexto: datos.proveedor ?? null,
-          numero: datos.numero?.slice(0, 60) ?? null,
+          numero,
           fecha: fechaValida,
           base: numeroSano(datos.base)?.toFixed(2) ?? null,
           iva: numeroSano(datos.iva)?.toFixed(2) ?? null,
-          total: numeroSano(datos.total)?.toFixed(2) ?? null,
+          total: totalTxt,
+          tipo,
           datosIa: datos,
-          estado: "revisar",
+          estado: motivoRechazo ? "rechazada" : "revisar",
+          motivoRechazo,
           updatedAt: new Date(),
         })
         .where(eq(schema.facturas.id, facturaId)),
@@ -322,4 +378,89 @@ export async function validarFactura(facturaId: string): Promise<{ ok: boolean; 
   revalidatePath("/productos");
   revalidatePath("/incidencias");
   return { ok: true };
+}
+
+// "No es un duplicado, acéptalo": una rechazada pasa a la bandeja normal.
+export async function aceptarRechazada(facturaId: string): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "Base de datos no configurada" };
+  try {
+    const [factura] = await conPlazo(db.select().from(schema.facturas).where(eq(schema.facturas.id, facturaId)));
+    if (!factura) return { ok: false, error: "Documento no encontrado" };
+    if (factura.estado !== "rechazada") return { ok: false, error: "Este documento no está rechazado" };
+    await conPlazo(
+      db
+        .update(schema.facturas)
+        .set({ estado: "revisar", motivoRechazo: null, updatedAt: new Date() })
+        .where(eq(schema.facturas.id, facturaId)),
+    );
+    revalidatePath("/documentos");
+    return { ok: true };
+  } catch (e) {
+    console.error("[aceptarRechazada] falló:", e instanceof Error ? e.message : e);
+    resetDb();
+    return { ok: false, error: "La base de datos no responde ahora mismo" };
+  }
+}
+
+// Eliminar un documento rechazado o con error (sus líneas caen en cascada).
+export async function eliminarFactura(facturaId: string): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "Base de datos no configurada" };
+  try {
+    const [factura] = await conPlazo(db.select().from(schema.facturas).where(eq(schema.facturas.id, facturaId)));
+    if (!factura) return { ok: false, error: "Documento no encontrado" };
+    if (factura.estado !== "rechazada" && factura.estado !== "error") {
+      return { ok: false, error: "Solo se pueden eliminar documentos rechazados o con error" };
+    }
+    await conPlazo(db.delete(schema.facturas).where(eq(schema.facturas.id, facturaId)));
+    revalidatePath("/documentos");
+    return { ok: true };
+  } catch (e) {
+    console.error("[eliminarFactura] falló:", e instanceof Error ? e.message : e);
+    resetDb();
+    return { ok: false, error: "La base de datos no responde ahora mismo" };
+  }
+}
+
+// Tipo de documento, categoría del gasto, pagada e incidencia: editables en
+// cualquier estado (haddock los pide al subir; aquí la IA los rellena y el
+// usuario los corrige donde haga falta).
+export async function actualizarDocumento(
+  facturaId: string,
+  datos: {
+    tipo?: "factura" | "albaran" | "ticket";
+    categoria?: CategoriaGasto | null;
+    pagada?: boolean;
+    incidencia?: string | null;
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "Base de datos no configurada" };
+
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (datos.tipo !== undefined) {
+    if (!["factura", "albaran", "ticket"].includes(datos.tipo)) return { ok: false, error: "Tipo no válido" };
+    set.tipo = datos.tipo;
+  }
+  if (datos.categoria !== undefined) {
+    if (datos.categoria !== null && !CATEGORIAS_GASTO.includes(datos.categoria)) {
+      return { ok: false, error: "Categoría no válida" };
+    }
+    set.categoria = datos.categoria;
+  }
+  if (datos.pagada !== undefined) set.pagada = datos.pagada;
+  if (datos.incidencia !== undefined) set.incidencia = datos.incidencia?.trim() || null;
+
+  try {
+    await conPlazo(db.update(schema.facturas).set(set).where(eq(schema.facturas.id, facturaId)));
+    revalidatePath("/documentos");
+    revalidatePath("/incidencias");
+    revalidatePath("/dashboard");
+    return { ok: true };
+  } catch (e) {
+    console.error("[actualizarDocumento] falló:", e instanceof Error ? e.message : e);
+    resetDb();
+    return { ok: false, error: "La base de datos no responde ahora mismo" };
+  }
 }

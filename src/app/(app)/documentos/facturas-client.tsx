@@ -1,22 +1,38 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, FileText, Mail, X } from "lucide-react";
-import { Chip, MonthChip, PageHead } from "@/components/ui";
-import { type EstadoFactura, type Factura } from "@/lib/mock";
+import { AlertTriangle, Camera, FileText, Mail, SlidersHorizontal, X } from "lucide-react";
+import { Chip, PageHead } from "@/components/ui";
+import {
+  ETIQUETA_CATEGORIA,
+  type CategoriaGasto,
+  type EstadoFactura,
+  type Factura,
+  type TipoDocumento,
+} from "@/lib/mock";
 import { cn, eur } from "@/lib/utils";
 import {
+  aceptarRechazada,
+  actualizarDocumento,
   actualizarLineaFactura,
   agregarLineaFactura,
+  eliminarFactura,
   eliminarLineaFactura,
   procesarDocumento,
   validarFactura,
 } from "./actions";
 
-type Filtro = "todas" | "revisar" | "validada";
+type FiltroEstado = "todas" | "revisar" | "validada" | "rechazada";
+type Orden = "fecha" | "importe-desc" | "importe-asc";
 
 type ProductoOpcion = { id: string; nombre: string; precio: string };
+
+const TIPOS: { valor: TipoDocumento; etiqueta: string }[] = [
+  { valor: "factura", etiqueta: "Factura" },
+  { valor: "albaran", etiqueta: "Albarán" },
+  { valor: "ticket", etiqueta: "Ticket" },
+];
 
 export function FacturasClient({
   facturas,
@@ -26,7 +42,13 @@ export function FacturasClient({
   productos: ProductoOpcion[];
 }) {
   const router = useRouter();
-  const [filtro, setFiltro] = useState<Filtro>("todas");
+  const [filtro, setFiltro] = useState<FiltroEstado>("todas");
+  const [conFiltros, setConFiltros] = useState(false);
+  const [fMes, setFMes] = useState("");
+  const [fTipo, setFTipo] = useState("");
+  const [fCat, setFCat] = useState("");
+  const [fProv, setFProv] = useState("");
+  const [orden, setOrden] = useState<Orden>("fecha");
   const [abiertaId, setAbiertaId] = useState<string | null>(null);
   const [validando, startValidar] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +88,41 @@ export function FacturasClient({
   }
 
   const porRevisar = facturas.filter((f) => f.estado === "revisar").length;
-  const visibles = facturas.filter((f) => filtro === "todas" || f.estado === filtro);
+  const rechazadas = facturas.filter((f) => f.estado === "rechazada").length;
+  const proveedoresUnicos = useMemo(
+    () => [...new Set(facturas.map((f) => f.proveedor))].sort((a, b) => a.localeCompare(b)),
+    [facturas],
+  );
+
+  const hayFiltrosFinos = Boolean(fMes || fTipo || fCat || fProv);
+  const visibles = useMemo(() => {
+    let lista = facturas.filter((f) => (filtro === "todas" ? f.estado !== "rechazada" : f.estado === filtro));
+    if (fMes) lista = lista.filter((f) => f.fechaISO?.startsWith(fMes));
+    if (fTipo) lista = lista.filter((f) => f.tipo === fTipo);
+    if (fCat) lista = lista.filter((f) => f.categoriaEfectiva === fCat);
+    if (fProv) lista = lista.filter((f) => f.proveedor === fProv);
+    if (orden !== "fecha") {
+      lista = [...lista].sort((a, b) =>
+        orden === "importe-desc" ? (b.total ?? -1) - (a.total ?? -1) : (a.total ?? Infinity) - (b.total ?? Infinity),
+      );
+    }
+    return lista;
+  }, [facturas, filtro, fMes, fTipo, fCat, fProv, orden]);
+
+  // Resumen del filtro (como haddock: N documentos, total y por proveedor).
+  const resumen = useMemo(() => {
+    if (!hayFiltrosFinos) return null;
+    const conTotal = visibles.filter((f) => f.total !== null);
+    const total = conTotal.reduce((a, f) => a + (f.total ?? 0), 0);
+    const porProveedor = new Map<string, number>();
+    for (const f of conTotal) porProveedor.set(f.proveedor, (porProveedor.get(f.proveedor) ?? 0) + (f.total ?? 0));
+    return {
+      n: visibles.length,
+      total,
+      proveedores: [...porProveedor.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4),
+    };
+  }, [visibles, hayFiltrosFinos]);
+
   const abierta = facturas.find((f) => f.id === abiertaId) ?? null;
 
   function onValidar(id: string) {
@@ -82,12 +138,32 @@ export function FacturasClient({
     });
   }
 
+  function limpiarFiltros() {
+    setFMes("");
+    setFTipo("");
+    setFCat("");
+    setFProv("");
+    setOrden("fecha");
+  }
+
   return (
     <section className="anim-in">
       <PageHead
         titulo="Facturas y albaranes"
         subtitulo="Revisa la bandeja y valida: los precios se actualizan solos"
-        derecha={<MonthChip>Últimas 4 semanas</MonthChip>}
+        derecha={
+          <button
+            onClick={() => setConFiltros((v) => !v)}
+            className={cn(
+              "flex cursor-pointer items-center gap-2 rounded-xl border px-3.5 py-2 text-[13px] font-semibold transition-colors",
+              conFiltros || hayFiltrosFinos
+                ? "border-ink bg-ink text-white"
+                : "border-line bg-card text-ink-soft hover:border-[#CFC6B4]",
+            )}
+          >
+            <SlidersHorizontal className="size-4" /> Filtros
+          </button>
+        }
       />
 
       <input
@@ -123,7 +199,7 @@ export function FacturasClient({
           <div className="text-center">
             <div className="font-display text-lg font-bold tracking-tight">🤖 Leyendo el documento con IA…</div>
             <p className="mt-1 text-[13.5px] text-ink-soft">
-              extrayendo proveedor, fecha y líneas de producto — unos segundos
+              extrayendo proveedor, fecha, tipo y líneas de producto — unos segundos
             </p>
           </div>
         ) : (
@@ -131,7 +207,7 @@ export function FacturasClient({
             <div className="text-center">
               <div className="font-display text-lg font-bold tracking-tight">Arrastra aquí tus facturas</div>
               <p className="mt-1 text-[13.5px] text-ink-soft">
-                o haz clic para elegir una foto o PDF · la IA extrae las líneas sola
+                o haz clic para elegir una foto o PDF · la IA extrae tipo, categoría y líneas sola
               </p>
             </div>
             <div className="flex gap-3">
@@ -148,7 +224,7 @@ export function FacturasClient({
         </div>
       )}
 
-      <div className="mb-3.5 flex flex-wrap gap-2">
+      <div className="mb-3.5 flex flex-wrap items-center gap-2">
         <FiltroChip activo={filtro === "todas"} onClick={() => setFiltro("todas")}>
           Todas
         </FiltroChip>
@@ -158,7 +234,74 @@ export function FacturasClient({
         <FiltroChip activo={filtro === "validada"} onClick={() => setFiltro("validada")}>
           Validadas
         </FiltroChip>
+        <FiltroChip activo={filtro === "rechazada"} onClick={() => setFiltro("rechazada")} alerta={rechazadas > 0}>
+          Rechazadas · {rechazadas}
+        </FiltroChip>
       </div>
+
+      {conFiltros && (
+        <div className="card anim-in mb-3.5 flex flex-wrap items-center gap-2.5 px-4 py-3">
+          <input
+            type="month"
+            value={fMes}
+            onChange={(e) => setFMes(e.target.value)}
+            className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] outline-none focus:border-brand"
+          />
+          <SelectFiltro valor={fTipo} onCambio={setFTipo} placeholder="Tipo">
+            {TIPOS.map((t) => (
+              <option key={t.valor} value={t.valor}>
+                {t.etiqueta}
+              </option>
+            ))}
+          </SelectFiltro>
+          <SelectFiltro valor={fCat} onCambio={setFCat} placeholder="Categoría">
+            {Object.entries(ETIQUETA_CATEGORIA).map(([v, e]) => (
+              <option key={v} value={v}>
+                {e}
+              </option>
+            ))}
+          </SelectFiltro>
+          <SelectFiltro valor={fProv} onCambio={setFProv} placeholder="Proveedor">
+            {proveedoresUnicos.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </SelectFiltro>
+          <SelectFiltro
+            valor={orden === "fecha" ? "" : orden}
+            onCambio={(v) => setOrden((v || "fecha") as Orden)}
+            placeholder="Ordenar: fecha"
+          >
+            <option value="importe-desc">Mayor importe</option>
+            <option value="importe-asc">Menor importe</option>
+          </SelectFiltro>
+          {hayFiltrosFinos && (
+            <button
+              onClick={limpiarFiltros}
+              className="cursor-pointer rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold text-bad hover:bg-bad-soft"
+            >
+              Eliminar filtros
+            </button>
+          )}
+        </div>
+      )}
+
+      {resumen && (
+        <div className="card anim-in mb-3.5 flex flex-wrap items-center gap-x-6 gap-y-2 bg-ink px-5 py-3.5 text-white">
+          <span className="text-[13.5px]">
+            <b className="font-display text-[16px]">{resumen.n}</b> documentos ·{" "}
+            <b className="font-display text-[16px]">{eur(resumen.total)}</b>
+          </span>
+          <span className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-white/75">
+            {resumen.proveedores.map(([nombre, importe]) => (
+              <span key={nombre}>
+                {nombre} <b className="text-white">{eur(importe, false)}</b>
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
 
       <div className="card overflow-hidden">
         <table className="w-full border-collapse">
@@ -166,40 +309,149 @@ export function FacturasClient({
             <tr>
               <Th>Proveedor</Th>
               <Th>Fecha</Th>
+              <Th>Tipo · Categoría</Th>
               <Th>Líneas</Th>
               <Th>Total</Th>
+              <Th>Pago</Th>
               <Th>Estado</Th>
             </tr>
           </thead>
           <tbody>
-            {visibles.map((f) => (
-              <tr
-                key={f.id}
-                onClick={f.lineasDetalle?.length ? () => setAbiertaId(f.id) : undefined}
-                className={cn(
-                  "border-b border-line transition-colors last:border-none",
-                  f.lineasDetalle?.length && "cursor-pointer hover:bg-hover",
-                  abiertaId === f.id && "bg-hover",
-                )}
-              >
-                <Td>
-                  <span className="font-semibold">{f.proveedor}</span>
-                  <span className="mt-px block text-xs text-ink-soft">{f.detalle}</span>
-                </Td>
-                <Td>{f.fecha}</Td>
-                <Td>{f.lineas || "—"}</Td>
-                <Td className="font-display text-[14.5px] font-semibold whitespace-nowrap">
-                  {f.total !== null ? eur(f.total) : "—"}
-                </Td>
-                <Td>
-                  <EstadoChip estado={f.estado} />
-                </Td>
-              </tr>
-            ))}
+            {visibles.map((f) => {
+              const editableMeta = f.estado !== "procesando" && f.estado !== "error";
+              return (
+                <tr
+                  key={f.id}
+                  onClick={f.lineasDetalle?.length ? () => setAbiertaId(f.id) : undefined}
+                  className={cn(
+                    "border-b border-line transition-colors last:border-none",
+                    f.lineasDetalle?.length && "cursor-pointer hover:bg-hover",
+                    abiertaId === f.id && "bg-hover",
+                  )}
+                >
+                  <Td>
+                    <span className="flex items-center gap-1.5 font-semibold">
+                      {f.proveedor}
+                      {f.incidencia && (
+                        <span title={`Incidencia: ${f.incidencia}`}>
+                          <AlertTriangle className="size-3.5 text-warn" />
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-px block text-xs text-ink-soft">{f.detalle}</span>
+                    {f.estado === "rechazada" && f.motivoRechazo && (
+                      <span className="mt-1 block text-xs font-semibold text-bad">{f.motivoRechazo}</span>
+                    )}
+                  </Td>
+                  <Td>{f.fecha}</Td>
+                  <Td>
+                    {editableMeta ? (
+                      <span className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={f.tipo ?? "factura"}
+                          onChange={(e) =>
+                            ejecutarCorreccion(() =>
+                              actualizarDocumento(f.id, { tipo: e.target.value as TipoDocumento }),
+                            )
+                          }
+                          className="w-fit rounded-md border border-transparent bg-transparent py-0.5 pr-1 text-[12.5px] font-semibold outline-none hover:border-line focus:border-brand"
+                        >
+                          {TIPOS.map((t) => (
+                            <option key={t.valor} value={t.valor}>
+                              {t.etiqueta}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={f.categoria ?? ""}
+                          onChange={(e) =>
+                            ejecutarCorreccion(() =>
+                              actualizarDocumento(f.id, {
+                                categoria: (e.target.value || null) as CategoriaGasto | null,
+                              }),
+                            )
+                          }
+                          className="w-fit rounded-md border border-transparent bg-transparent py-0.5 pr-1 text-[11.5px] text-ink-soft outline-none hover:border-line focus:border-brand"
+                        >
+                          <option value="">
+                            {ETIQUETA_CATEGORIA[f.categoriaEfectiva ?? "otros"]} (proveedor)
+                          </option>
+                          {Object.entries(ETIQUETA_CATEGORIA).map(([v, e]) => (
+                            <option key={v} value={v}>
+                              {e}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </Td>
+                  <Td>{f.lineas || "—"}</Td>
+                  <Td className="font-display text-[14.5px] font-semibold whitespace-nowrap">
+                    {f.total !== null ? eur(f.total) : "—"}
+                  </Td>
+                  <Td>
+                    {editableMeta ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          ejecutarCorreccion(() => actualizarDocumento(f.id, { pagada: !f.pagada }));
+                        }}
+                        title="Cambiar estado de pago"
+                        className="cursor-pointer"
+                      >
+                        {f.pagada ? (
+                          <Chip tone="good">Pagada</Chip>
+                        ) : (
+                          <Chip tone="gray">Por pagar</Chip>
+                        )}
+                      </button>
+                    ) : (
+                      "—"
+                    )}
+                  </Td>
+                  <Td>
+                    {f.estado === "rechazada" ? (
+                      <span className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => ejecutarCorreccion(() => aceptarRechazada(f.id))}
+                          className="cursor-pointer rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-semibold whitespace-nowrap text-ink-soft hover:border-good hover:text-good"
+                        >
+                          No es duplicado
+                        </button>
+                        <button
+                          onClick={() => ejecutarCorreccion(() => eliminarFactura(f.id))}
+                          className="cursor-pointer rounded-lg bg-bad-soft px-2.5 py-1.5 text-[12px] font-semibold text-bad hover:bg-bad hover:text-white"
+                        >
+                          Eliminar
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5">
+                        <EstadoChip estado={f.estado} />
+                        {f.estado === "error" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              ejecutarCorreccion(() => eliminarFactura(f.id));
+                            }}
+                            title="Eliminar documento con error"
+                            className="cursor-pointer rounded-lg p-1 text-ink-soft hover:bg-bad-soft hover:text-bad"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        )}
+                      </span>
+                    )}
+                  </Td>
+                </tr>
+              );
+            })}
             {visibles.length === 0 && (
               <tr>
-                <Td colSpan={5} className="py-8 text-center text-ink-soft">
-                  No hay facturas con este filtro
+                <Td colSpan={7} className="py-8 text-center text-ink-soft">
+                  No hay documentos con este filtro
                 </Td>
               </tr>
             )}
@@ -226,6 +478,17 @@ export function FacturasClient({
               <b className="block font-display text-[22px] font-bold">{eur(abierta.total!)}</b>
             </div>
           </div>
+          {abierta.estado === "revisar" && (
+            <div className="flex flex-wrap items-center gap-2.5 border-b border-line bg-hover/50 px-5.5 py-2.5">
+              <span className="text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
+                Incidencia de compra
+              </span>
+              <IncidenciaInput
+                valorInicial={abierta.incidencia ?? ""}
+                onGuardar={(v) => ejecutarCorreccion(() => actualizarDocumento(abierta.id, { incidencia: v }))}
+              />
+            </div>
+          )}
           <table className="w-full border-collapse">
             <thead>
               <tr>
@@ -408,6 +671,25 @@ export function FacturasClient({
   );
 }
 
+function IncidenciaInput({
+  valorInicial,
+  onGuardar,
+}: {
+  valorInicial: string;
+  onGuardar: (v: string) => void;
+}) {
+  const [texto, setTexto] = useState(valorInicial);
+  return (
+    <input
+      value={texto}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={() => texto !== valorInicial && onGuardar(texto)}
+      placeholder="p. ej. faltan 2 cajas, precio distinto al pactado… (vacío = sin incidencia)"
+      className="min-w-0 flex-1 rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] outline-none placeholder:text-ink-soft/50 focus:border-brand"
+    />
+  );
+}
+
 function CampoLinea({
   valorInicial,
   sufijo,
@@ -439,6 +721,32 @@ function CampoLinea({
   );
 }
 
+function SelectFiltro({
+  valor,
+  onCambio,
+  placeholder,
+  children,
+}: {
+  valor: string;
+  onCambio: (v: string) => void;
+  placeholder: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onCambio(e.target.value)}
+      className={cn(
+        "rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] outline-none focus:border-brand",
+        valor ? "font-semibold" : "text-ink-soft",
+      )}
+    >
+      <option value="">{placeholder}</option>
+      {children}
+    </select>
+  );
+}
+
 function ViaSubida({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="card flex flex-col items-center gap-1.5 rounded-[14px]! px-4.5 py-3.5 text-[12.5px] font-semibold text-ink-soft">
@@ -450,10 +758,12 @@ function ViaSubida({ icon, children }: { icon: React.ReactNode; children: React.
 
 function FiltroChip({
   activo,
+  alerta,
   onClick,
   children,
 }: {
   activo: boolean;
+  alerta?: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -462,7 +772,11 @@ function FiltroChip({
       onClick={onClick}
       className={cn(
         "cursor-pointer rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition-all",
-        activo ? "border-ink bg-ink text-white" : "border-line bg-card text-ink-soft hover:border-[#CFC6B4]",
+        activo
+          ? "border-ink bg-ink text-white"
+          : alerta
+            ? "border-bad bg-bad-soft text-bad hover:border-bad"
+            : "border-line bg-card text-ink-soft hover:border-[#CFC6B4]",
       )}
     >
       {children}
@@ -487,6 +801,12 @@ function EstadoChip({ estado }: { estado: EstadoFactura }) {
     return (
       <Chip tone="bad" dot>
         Error de lectura
+      </Chip>
+    );
+  if (estado === "rechazada")
+    return (
+      <Chip tone="bad" dot>
+        Rechazada
       </Chip>
     );
   return (

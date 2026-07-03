@@ -46,6 +46,7 @@ export const facturaEstadoEnum = pgEnum("factura_estado", [
   "revisar", // leída, pendiente de que el usuario valide las líneas
   "validada", // confirmada; sus líneas ya alimentan el histórico de precios
   "error", // la IA no pudo leerla
+  "rechazada", // error no subsanable (p. ej. duplicado): aceptar o eliminar
 ]);
 
 export const facturaOrigenEnum = pgEnum("factura_origen", [
@@ -54,6 +55,24 @@ export const facturaOrigenEnum = pgEnum("factura_origen", [
   "email",
   "manual",
 ]);
+
+// Categoría del gasto (como haddock): solo las 4 primeras alimentan Productos.
+export const gastoCategoriaEnum = pgEnum("gasto_categoria", [
+  "materia_prima",
+  "bebidas",
+  "limpieza",
+  "consumibles",
+  "gestoria",
+  "alquiler",
+  "suministros",
+  "otros",
+]);
+
+export const documentoTipoEnum = pgEnum("documento_tipo", ["factura", "albaran", "ticket"]);
+
+// De dónde salen los productos de un proveedor: albaranes (más a tiempo
+// real, por defecto) o facturas (si sus albaranes vienen sin importes).
+export const proveedorFuenteEnum = pgEnum("proveedor_fuente", ["albaranes", "facturas"]);
 
 // ---------------------------------------------------------------------
 // proveedores
@@ -65,6 +84,8 @@ export const proveedores = pgTable("proveedores", {
   cif: text("cif"),
   email: text("email"), // buzón desde el que llegan sus facturas (pipeline correo)
   telefono: text("telefono"),
+  categoria: gastoCategoriaEnum("categoria").notNull().default("materia_prima"),
+  fuenteProductos: proveedorFuenteEnum("fuente_productos").notNull().default("albaranes"),
   activo: boolean("activo").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -113,6 +134,11 @@ export const facturas = pgTable(
     total: numeric("total", { precision: 12, scale: 2 }),
     estado: facturaEstadoEnum("estado").notNull().default("procesando"),
     origen: facturaOrigenEnum("origen").notNull().default("manual"),
+    tipo: documentoTipoEnum("tipo").notNull().default("factura"),
+    categoria: gastoCategoriaEnum("categoria"), // null = hereda la del proveedor
+    pagada: boolean("pagada").notNull().default(false),
+    incidencia: text("incidencia"), // incidencia de compra registrada en el documento
+    motivoRechazo: text("motivo_rechazo"), // por qué está en rechazadas (p. ej. duplicado)
     documentoUrl: text("documento_url"), // fichero en Supabase Storage
     datosIa: jsonb("datos_ia"), // respuesta cruda de la extracción, para depurar
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -123,6 +149,35 @@ export const facturas = pgTable(
     index("facturas_fecha_idx").on(t.fecha),
   ],
 );
+
+// ---------------------------------------------------------------------
+// ajustes  (preferencias del sistema, una sola fila)
+// ---------------------------------------------------------------------
+
+export const ajustes = pgTable("ajustes", {
+  id: integer("id").primaryKey().default(1),
+  conIva: boolean("con_iva").notNull().default(true), // dashboard con o sin IVA
+  ventasConTotal: boolean("ventas_con_total").notNull().default(true), // ventas con total o con base
+  ivaVentasPct: numeric("iva_ventas_pct", { precision: 5, scale: 2 }).notNull().default("10"), // IVA automático de ventas
+  toleranciaConciliacion: numeric("tolerancia_conciliacion", { precision: 8, scale: 2 }).notNull().default("1"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------
+// usuarios  (roles como haddock: admin, documentos, gestor, chef)
+// ---------------------------------------------------------------------
+
+export const usuarioRolEnum = pgEnum("usuario_rol", ["admin", "documentos", "gestor", "chef"]);
+
+export const usuarios = pgTable("usuarios", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nombre: text("nombre").notNull(),
+  rol: usuarioRolEnum("rol").notNull().default("admin"),
+  contrasena: text("contrasena").notNull(), // hash HMAC con AUTH_SECRET, nunca en claro
+  activo: boolean("activo").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ---------------------------------------------------------------------
 // factura_lineas  (una fila por producto de la factura)

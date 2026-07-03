@@ -20,6 +20,17 @@ export type FacturaExtraida = {
   base: number | null;
   iva: number | null;
   total: number | null;
+  tipo: "factura" | "albaran" | "ticket" | null;
+  categoria_proveedor:
+    | "materia_prima"
+    | "bebidas"
+    | "limpieza"
+    | "consumibles"
+    | "gestoria"
+    | "alquiler"
+    | "suministros"
+    | "otros"
+    | null;
   lineas: LineaExtraida[];
 };
 
@@ -36,6 +47,28 @@ const HERRAMIENTA: Anthropic.Tool = {
       base: { type: ["number", "null"], description: "Base imponible en euros" },
       iva: { type: ["number", "null"], description: "IVA en euros" },
       total: { type: ["number", "null"], description: "Total del documento en euros" },
+      tipo: {
+        type: ["string", "null"],
+        enum: ["factura", "albaran", "ticket", null],
+        description:
+          "Tipo de documento: 'factura' (con nº de factura, base e IVA desglosado), 'albaran' (nota de entrega, a veces sin importes), 'ticket' (ticket de caja simplificado)",
+      },
+      categoria_proveedor: {
+        type: ["string", "null"],
+        enum: [
+          "materia_prima",
+          "bebidas",
+          "limpieza",
+          "consumibles",
+          "gestoria",
+          "alquiler",
+          "suministros",
+          "otros",
+          null,
+        ],
+        description:
+          "SOLO si el proveedor es nuevo (proveedor_id null): a qué categoría de gasto se dedica (materia_prima = comida fresca/seca, bebidas, limpieza, consumibles = envases/servilletas, gestoria, alquiler, suministros = luz/agua/gas/internet, otros)",
+      },
       lineas: {
         type: "array",
         items: {
@@ -96,6 +129,8 @@ Reglas:
 - Importes en euros con punto decimal (1.234,56 € → 1234.56).
 - unidad: normaliza a "kg", "ud", "L" o "caja" cuando sea posible.
 - proveedor_id: usa el id del proveedor conocido si el nombre coincide; si no, null y deja el nombre leído en proveedor.
+- tipo: distingue factura (nº factura + IVA desglosado) de albarán (nota de entrega) y de ticket de caja.
+- categoria_proveedor: SOLO para proveedores nuevos; si es conocido, déjala en null.
 - No inventes líneas ni importes: si un dato no se lee bien, déjalo en null.`;
 
   const respuesta = await cliente.messages.create({

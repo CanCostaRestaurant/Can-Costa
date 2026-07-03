@@ -1,6 +1,37 @@
 // Datos de ejemplo mientras el visual se valida; luego vendrán de Supabase.
 
-export type EstadoFactura = "procesando" | "revisar" | "validada" | "error";
+export type EstadoFactura = "procesando" | "revisar" | "validada" | "error" | "rechazada";
+
+export type TipoDocumento = "factura" | "albaran" | "ticket";
+
+export type CategoriaGasto =
+  | "materia_prima"
+  | "bebidas"
+  | "limpieza"
+  | "consumibles"
+  | "gestoria"
+  | "alquiler"
+  | "suministros"
+  | "otros";
+
+export const ETIQUETA_CATEGORIA: Record<CategoriaGasto, string> = {
+  materia_prima: "Materia prima",
+  bebidas: "Bebidas",
+  limpieza: "Limpieza",
+  consumibles: "Consumibles",
+  gestoria: "Gestoría",
+  alquiler: "Alquiler",
+  suministros: "Suministros",
+  otros: "Otros",
+};
+
+// Solo estas categorías alimentan el apartado Productos (regla haddock).
+export const CATEGORIAS_CON_PRODUCTOS: CategoriaGasto[] = [
+  "materia_prima",
+  "bebidas",
+  "limpieza",
+  "consumibles",
+];
 
 export type LineaFactura = {
   producto: string;
@@ -21,9 +52,16 @@ export type Factura = {
   proveedor: string;
   detalle: string;
   fecha: string;
+  fechaISO?: string | null; // para filtrar por mes
   lineas: number;
   total: number | null;
   estado: EstadoFactura;
+  tipo?: TipoDocumento;
+  categoria?: CategoriaGasto | null; // null = hereda la del proveedor
+  categoriaEfectiva?: CategoriaGasto; // la propia o, si no, la del proveedor
+  pagada?: boolean;
+  incidencia?: string | null;
+  motivoRechazo?: string | null;
   lineasDetalle?: LineaFactura[];
   lineasOcultas?: number;
 };

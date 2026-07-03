@@ -160,8 +160,14 @@ export async function getFacturas(): Promise<Factura[]> {
             total: schema.facturas.total,
             estado: schema.facturas.estado,
             origen: schema.facturas.origen,
+            tipo: schema.facturas.tipo,
+            categoria: schema.facturas.categoria,
+            pagada: schema.facturas.pagada,
+            incidencia: schema.facturas.incidencia,
+            motivoRechazo: schema.facturas.motivoRechazo,
             proveedor: schema.proveedores.nombre,
             proveedorTexto: schema.facturas.proveedorTexto,
+            categoriaProveedor: schema.proveedores.categoria,
           })
           .from(schema.facturas)
           .leftJoin(schema.proveedores, eq(schema.facturas.proveedorId, schema.proveedores.id))
@@ -228,12 +234,19 @@ export async function getFacturas(): Promise<Factura[]> {
             f.estado === "procesando"
               ? "leyendo el documento…"
               : f.numero
-                ? (f.origen === "foto" ? "albarán " : "factura ") + f.numero.replace(/^ALB-/, "")
+                ? `${f.tipo === "albaran" ? "albarán" : f.tipo} ${f.numero.replace(/^ALB-/, "")}`
                 : "sin número",
           fecha: fechaLegible(f.fecha),
+          fechaISO: f.fecha,
           lineas: lineasPorFactura.get(f.id) ?? 0,
           total: f.total !== null ? Number(f.total) : null,
           estado: f.estado,
+          tipo: f.tipo,
+          categoria: f.categoria,
+          categoriaEfectiva: f.categoria ?? f.categoriaProveedor ?? "otros",
+          pagada: f.pagada,
+          incidencia: f.incidencia,
+          motivoRechazo: f.motivoRechazo,
           lineasDetalle: detalles.get(f.id),
         }));
       })(),
