@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Camera, FileText, Mail, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, Camera, FileText, Inbox, Mail, SlidersHorizontal, X } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
 import { MonthPicker } from "@/components/date-picker";
 import {
@@ -21,6 +21,7 @@ import {
   eliminarFactura,
   eliminarLineaFactura,
   procesarDocumento,
+  revisarBuzon,
   validarFactura,
 } from "./actions";
 
@@ -58,6 +59,8 @@ export function FacturasClient({
   const [leyendo, startLeer] = useTransition();
   const [arrastrando, setArrastrando] = useState(false);
   const [errorSubida, setErrorSubida] = useState<string | null>(null);
+  const [revisandoBuzon, startBuzon] = useTransition();
+  const [avisoBuzon, setAvisoBuzon] = useState<string | null>(null);
 
   // Corrección de líneas en la bandeja
   const [corrigiendo, startCorregir] = useTransition();
@@ -73,6 +76,23 @@ export function FacturasClient({
         setError(res.error ?? "No se pudo guardar la corrección");
         return;
       }
+      router.refresh();
+    });
+  }
+
+  function onRevisarBuzon() {
+    setAvisoBuzon(null);
+    setErrorSubida(null);
+    startBuzon(async () => {
+      const res = await revisarBuzon();
+      if (!res.ok) {
+        setErrorSubida(res.error ?? "No se pudo revisar el buzón");
+        return;
+      }
+      setAvisoBuzon(
+        res.aviso ??
+          `${res.procesados} documento${res.procesados === 1 ? "" : "s"} nuevos del buzón, ya en la bandeja`,
+      );
       router.refresh();
     });
   }
@@ -159,17 +179,27 @@ export function FacturasClient({
         titulo="Facturas y albaranes"
         subtitulo="Revisa la bandeja y valida: los precios se actualizan solos"
         derecha={
-          <button
-            onClick={() => setConFiltros((v) => !v)}
-            className={cn(
-              "flex cursor-pointer items-center gap-2 rounded-xl border px-3.5 py-2 text-[13px] font-semibold transition-colors",
-              conFiltros || hayFiltrosFinos
-                ? "border-ink bg-ink text-white"
-                : "border-line bg-card text-ink-soft hover:border-[#CFC6B4]",
-            )}
-          >
-            <SlidersHorizontal className="size-4" /> Filtros
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onRevisarBuzon}
+              disabled={revisandoBuzon}
+              title="Buscar facturas nuevas en el buzón de correo ahora"
+              className="flex cursor-pointer items-center gap-2 rounded-xl border border-line bg-card px-3.5 py-2 text-[13px] font-semibold text-ink-soft transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
+            >
+              <Inbox className="size-4" /> {revisandoBuzon ? "Revisando…" : "Revisar buzón"}
+            </button>
+            <button
+              onClick={() => setConFiltros((v) => !v)}
+              className={cn(
+                "flex cursor-pointer items-center gap-2 rounded-xl border px-3.5 py-2 text-[13px] font-semibold transition-colors",
+                conFiltros || hayFiltrosFinos
+                  ? "border-ink bg-ink text-white"
+                  : "border-line bg-card text-ink-soft hover:border-[#CFC6B4]",
+              )}
+            >
+              <SlidersHorizontal className="size-4" /> Filtros
+            </button>
+          </div>
         }
       />
 
@@ -228,6 +258,11 @@ export function FacturasClient({
       {errorSubida && (
         <div className="mb-3.5 rounded-[14px] bg-bad-soft px-4 py-3 text-[13.5px] font-semibold text-bad">
           {errorSubida}
+        </div>
+      )}
+      {avisoBuzon && (
+        <div className="mb-3.5 rounded-[14px] bg-good-soft px-4 py-3 text-[13.5px] font-semibold text-good">
+          {avisoBuzon}
         </div>
       )}
 

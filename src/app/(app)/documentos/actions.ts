@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, ne } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
-import { extraerFactura } from "@/lib/ia/extraer-factura";
+import { leerBuzon } from "@/lib/correo/leer-buzon";
+import { procesarBufferDocumento, TAMANO_MAXIMO, TIPOS_SOPORTADOS } from "@/lib/documentos/procesar";
 
 const CATEGORIAS_GASTO = [
   "materia_prima",
@@ -17,9 +18,6 @@ const CATEGORIAS_GASTO = [
   "otros",
 ] as const;
 type CategoriaGasto = (typeof CATEGORIAS_GASTO)[number];
-
-const TIPOS_SOPORTADOS = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
-const TAMANO_MAXIMO = 7 * 1024 * 1024;
 
 function numeroSano(v: number | null | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
@@ -139,13 +137,8 @@ export async function agregarLineaFactura(
 }
 
 // Pipeline foto/PDF → IA → factura con líneas en la bandeja (estado revisar).
+// El núcleo vive en lib/documentos/procesar.ts (compartido con el buzón).
 export async function procesarDocumento(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  const db = getDb();
-  if (!db) return { ok: false, error: "Base de datos no configurada" };
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { ok: false, error: "Falta configurar ANTHROPIC_API_KEY en el servidor" };
-  }
-
   const archivo = formData.get("archivo");
   if (!(archivo instanceof File) || archivo.size === 0) {
     return { ok: false, error: "No se recibió ningún archivo" };
@@ -157,148 +150,30 @@ export async function procesarDocumento(formData: FormData): Promise<{ ok: boole
     return { ok: false, error: "Archivo demasiado grande (máximo 7 MB)" };
   }
 
-  const base64 = Buffer.from(await archivo.arrayBuffer()).toString("base64");
-  const origen = archivo.type === "application/pdf" ? ("pdf" as const) : ("foto" as const);
-
-  let facturaId: string;
-  let catalogo: { id: string; nombre: string; unidad: string }[];
-  let proveedoresConocidos: { id: string; nombre: string }[];
-  try {
-    [catalogo, proveedoresConocidos] = await Promise.all([
-      conPlazo(
-        db
-          .select({ id: schema.productos.id, nombre: schema.productos.nombre, unidad: schema.productos.unidad })
-          .from(schema.productos)
-          .where(eq(schema.productos.activo, true)),
-      ),
-      conPlazo(
-        db.select({ id: schema.proveedores.id, nombre: schema.proveedores.nombre }).from(schema.proveedores),
-      ),
-    ]);
-    const [creada] = await conPlazo(
-      db.insert(schema.facturas).values({ estado: "procesando", origen }).returning({ id: schema.facturas.id }),
-    );
-    facturaId = creada.id;
-  } catch (e) {
-    console.error("[procesarDocumento] preparación falló:", e instanceof Error ? e.message : e);
-    resetDb();
-    return { ok: false, error: "La base de datos no responde ahora mismo — vuelve a intentarlo" };
-  }
-
-  try {
-    const datos = await conPlazo(
-      extraerFactura({ base64, mediaType: archivo.type, productos: catalogo, proveedores: proveedoresConocidos }),
-      120_000, // la lectura con visión puede tardar
-    );
-
-    // Proveedor: id conocido → usarlo; nombre nuevo → alta automática con la
-    // categoría de gasto que haya inferido la IA.
-    const idsProveedores = new Set(proveedoresConocidos.map((p) => p.id));
-    let proveedorId = datos.proveedor_id && idsProveedores.has(datos.proveedor_id) ? datos.proveedor_id : null;
-    if (!proveedorId && datos.proveedor?.trim()) {
-      const categoriaNueva = CATEGORIAS_GASTO.includes(datos.categoria_proveedor as CategoriaGasto)
-        ? (datos.categoria_proveedor as CategoriaGasto)
-        : "materia_prima";
-      const [nuevo] = await conPlazo(
-        db
-          .insert(schema.proveedores)
-          .values({ nombre: datos.proveedor.trim(), categoria: categoriaNueva })
-          .returning({ id: schema.proveedores.id }),
-      );
-      proveedorId = nuevo.id;
-    }
-
-    const fechaValida = datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha) ? datos.fecha : null;
-    const tipo = datos.tipo === "albaran" || datos.tipo === "ticket" ? datos.tipo : "factura";
-    const numero = datos.numero?.slice(0, 60) ?? null;
-    const totalTxt = numeroSano(datos.total)?.toFixed(2) ?? null;
-
-    // Duplicados (error no subsanable, como haddock): mismo proveedor y mismo
-    // nº de documento, o misma fecha + mismo importe → carpeta Rechazadas.
-    let motivoRechazo: string | null = null;
-    if (proveedorId) {
-      const previas = await conPlazo(
-        db
-          .select({
-            numero: schema.facturas.numero,
-            fecha: schema.facturas.fecha,
-            total: schema.facturas.total,
-          })
-          .from(schema.facturas)
-          .where(
-            and(
-              eq(schema.facturas.proveedorId, proveedorId),
-              ne(schema.facturas.id, facturaId),
-              ne(schema.facturas.estado, "rechazada"),
-              ne(schema.facturas.estado, "error"),
-            ),
-          ),
-      );
-      const dup = previas.find(
-        (p) =>
-          (numero && p.numero === numero) ||
-          (fechaValida && totalTxt && p.fecha === fechaValida && p.total === totalTxt),
-      );
-      if (dup) {
-        motivoRechazo =
-          numero && dup.numero === numero
-            ? `Ya existe un documento de este proveedor con el número ${numero}`
-            : `Ya existe un documento de este proveedor con la misma fecha y el mismo importe (${totalTxt} €)`;
-      }
-    }
-
-    await conPlazo(
-      db
-        .update(schema.facturas)
-        .set({
-          proveedorId,
-          proveedorTexto: datos.proveedor ?? null,
-          numero,
-          fecha: fechaValida,
-          base: numeroSano(datos.base)?.toFixed(2) ?? null,
-          iva: numeroSano(datos.iva)?.toFixed(2) ?? null,
-          total: totalTxt,
-          tipo,
-          datosIa: datos,
-          estado: motivoRechazo ? "rechazada" : "revisar",
-          motivoRechazo,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.facturas.id, facturaId)),
-    );
-
-    if (datos.lineas?.length) {
-      const idsCatalogo = new Set(catalogo.map((p) => p.id));
-      await conPlazo(
-        db.insert(schema.facturaLineas).values(
-          datos.lineas.map((l, i) => ({
-            facturaId,
-            productoId: l.producto_id && idsCatalogo.has(l.producto_id) ? l.producto_id : null,
-            descripcion: (l.descripcion || "Línea sin descripción").slice(0, 200),
-            cantidad: numeroSano(l.cantidad)?.toFixed(3) ?? null,
-            unidad: l.unidad?.slice(0, 12) ?? null,
-            precioUnitario: numeroSano(l.precio_unitario)?.toFixed(4) ?? null,
-            total: numeroSano(l.total)?.toFixed(2) ?? null,
-            orden: i + 1,
-          })),
-        ),
-      );
-    }
-  } catch (e) {
-    const mensaje = e instanceof Error ? e.message : String(e);
-    console.error("[procesarDocumento] lectura falló:", mensaje);
-    await db
-      .update(schema.facturas)
-      .set({ estado: "error", datosIa: { error: mensaje }, updatedAt: new Date() })
-      .where(eq(schema.facturas.id, facturaId))
-      .catch(() => resetDb());
-    revalidatePath("/documentos");
-    return { ok: false, error: "No se pudo leer el documento — prueba con una foto más nítida o un PDF" };
-  }
+  const resultado = await procesarBufferDocumento({
+    base64: Buffer.from(await archivo.arrayBuffer()).toString("base64"),
+    mediaType: archivo.type,
+    origen: archivo.type === "application/pdf" ? "pdf" : "foto",
+  });
 
   revalidatePath("/documentos");
   revalidatePath("/");
-  return { ok: true };
+  return { ok: resultado.ok, error: resultado.error };
+}
+
+// Revisa el buzón de facturas a demanda (además del repaso automático diario).
+export async function revisarBuzon(): Promise<{
+  ok: boolean;
+  error?: string;
+  procesados?: number;
+  aviso?: string;
+}> {
+  const resultado = await leerBuzon();
+  if (resultado.procesados > 0) {
+    revalidatePath("/documentos");
+    revalidatePath("/");
+  }
+  return resultado;
 }
 
 // Valida una factura en bandeja: vuelca sus líneas al histórico de precios,
