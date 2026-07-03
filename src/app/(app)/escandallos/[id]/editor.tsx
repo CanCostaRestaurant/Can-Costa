@@ -6,6 +6,7 @@ import { Plus, TriangleAlert, X } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { type PlatoDetalle } from "@/lib/db/queries";
 import { cn, eur, pct } from "@/lib/utils";
+import { FotoPlato } from "./foto-plato";
 import {
   actualizarIngrediente,
   actualizarPlato,
@@ -63,13 +64,13 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
   return (
     <>
       <div className="mb-4 flex items-end justify-between gap-4 max-md:flex-col max-md:items-start">
-        <div className="flex items-center gap-3">
-          <input
-            value={emoji}
-            onChange={(e) => setEmoji(e.target.value)}
-            onBlur={() => emoji !== plato.emoji && ejecutar(() => actualizarPlato(plato.id, { emoji }))}
-            className="w-16 rounded-xl border border-line bg-card px-2 py-1.5 text-center text-[26px] outline-none focus:border-brand"
-            aria-label="Emoji del plato"
+        <div className="flex items-center gap-3.5">
+          <FotoPlato
+            platoId={plato.id}
+            fotoUrl={plato.fotoUrl}
+            emoji={emoji}
+            onEmojiChange={setEmoji}
+            onEmojiBlur={() => emoji !== plato.emoji && ejecutar(() => actualizarPlato(plato.id, { emoji }))}
           />
           <div>
             <input

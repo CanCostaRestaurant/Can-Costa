@@ -63,9 +63,14 @@ export default async function EscandallosPage() {
           >
             <div
               className="relative flex h-[92px] items-end px-4 py-3"
-              style={{ background: GRADIENTES[i % GRADIENTES.length] }}
+              style={plato.fotoUrl ? undefined : { background: GRADIENTES[i % GRADIENTES.length] }}
             >
-              <span className="text-[34px]">{plato.emoji}</span>
+              {plato.fotoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={plato.fotoUrl} alt="" className="absolute inset-0 size-full object-cover" />
+              ) : (
+                <span className="text-[34px]">{plato.emoji}</span>
+              )}
               {plato.aviso && (
                 <Chip tone="bad" className="absolute top-2.5 right-2.5">
                   {plato.aviso}

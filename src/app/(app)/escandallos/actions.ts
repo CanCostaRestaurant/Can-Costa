@@ -72,6 +72,33 @@ export async function actualizarPlato(
   }
 }
 
+// Foto del plato. Llega ya comprimida desde el cliente como data URL
+// (image/jpeg|png, ~640px). null = quitar la foto (vuelve al emoji).
+// Tope defensivo de 1,5 MB por si el navegador no comprimió bien.
+export async function guardarFotoPlato(id: string, fotoUrl: string | null): Promise<Resultado> {
+  const db = getDb();
+  if (!db) return SIN_BD;
+
+  if (fotoUrl !== null) {
+    if (!/^data:image\/(jpeg|png|webp);base64,/.test(fotoUrl)) {
+      return { ok: false, error: "El archivo no es una imagen válida" };
+    }
+    if (fotoUrl.length > 1_500_000) {
+      return { ok: false, error: "La imagen es demasiado grande; prueba con otra foto" };
+    }
+  }
+
+  try {
+    await conPlazo(
+      db.update(schema.platos).set({ fotoUrl, updatedAt: new Date() }).where(eq(schema.platos.id, id)),
+    );
+    revalidar(id);
+    return { ok: true };
+  } catch (e) {
+    return fallo("guardarFotoPlato", e);
+  }
+}
+
 export async function eliminarPlato(id: string): Promise<Resultado> {
   const db = getDb();
   if (!db) return SIN_BD;

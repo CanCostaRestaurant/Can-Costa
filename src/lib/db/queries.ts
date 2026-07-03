@@ -508,6 +508,7 @@ export type PlatoResumen = {
   id: string;
   nombre: string;
   emoji: string;
+  fotoUrl: string | null;
   coste: number;
   pvp: number | null;
   foodCost: number | null;
@@ -531,6 +532,7 @@ function mockPlatoResumen(): PlatoResumen[] {
     id: p.id,
     nombre: p.nombre,
     emoji: p.emoji,
+    fotoUrl: null,
     coste: p.coste,
     pvp: p.pvp,
     foodCost: (p.coste / p.pvp) * 100,
@@ -584,6 +586,7 @@ export async function getPlatosResumen(): Promise<PlatoResumen[]> {
             id: p.id,
             nombre: p.nombre,
             emoji: p.emoji,
+            fotoUrl: p.fotoUrl ?? null,
             coste,
             pvp,
             foodCost: pvp && pvp > 0 ? (coste / pvp) * 100 : null,
@@ -608,6 +611,7 @@ export async function getPlatoDetalle(id: string): Promise<PlatoDetalle | null> 
       id: p.id,
       nombre: p.nombre,
       emoji: p.emoji,
+      fotoUrl: null,
       coste: p.coste,
       pvp: p.pvp,
       foodCost: (p.coste / p.pvp) * 100,
@@ -682,6 +686,7 @@ export async function getPlatoDetalle(id: string): Promise<PlatoDetalle | null> 
           id: plato.id,
           nombre: plato.nombre,
           emoji: plato.emoji,
+          fotoUrl: plato.fotoUrl ?? null,
           coste,
           pvp,
           foodCost: pvp && pvp > 0 ? (coste / pvp) * 100 : null,

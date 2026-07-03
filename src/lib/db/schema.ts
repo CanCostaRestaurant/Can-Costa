@@ -174,7 +174,8 @@ export const ventasDia = pgTable("ventas_dia", {
 export const platos = pgTable("platos", {
   id: uuid("id").primaryKey().defaultRandom(),
   nombre: text("nombre").notNull(),
-  emoji: text("emoji").notNull().default("🍽️"),
+  emoji: text("emoji").notNull().default("🍽️"), // fallback visual cuando no hay foto
+  fotoUrl: text("foto_url"), // foto del plato: data URL comprimida (sin Storage aún)
   pvp: numeric("pvp", { precision: 12, scale: 2 }), // precio en carta; null = sin fijar
   mermaPct: numeric("merma_pct", { precision: 5, scale: 2 }).notNull().default("10"),
   activo: boolean("activo").notNull().default(true),
