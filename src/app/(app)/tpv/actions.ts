@@ -293,6 +293,7 @@ export async function actualizarMesa(
     capacidad?: number;
     activo?: boolean;
     forma?: "cuadrada" | "redonda" | "alargada";
+    combinable?: boolean;
   },
 ): Promise<Resultado> {
   const db = getDb();
@@ -305,6 +306,7 @@ export async function actualizarMesa(
   }
   if (datos.zona !== undefined) set.zona = datos.zona;
   if (datos.forma !== undefined) set.forma = datos.forma;
+  if (datos.combinable !== undefined) set.combinable = datos.combinable;
   if (datos.capacidad !== undefined) {
     if (!Number.isFinite(datos.capacidad) || datos.capacidad < 1 || datos.capacidad > 30) {
       return { ok: false, error: "Capacidad entre 1 y 30" };

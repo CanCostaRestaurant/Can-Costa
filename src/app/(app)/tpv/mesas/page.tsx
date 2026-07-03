@@ -21,6 +21,7 @@ export default async function MesasPage() {
         forma: m.forma,
         posX: m.posX,
         posY: m.posY,
+        combinable: m.combinable,
         activo: m.activo,
       }));
     } catch {

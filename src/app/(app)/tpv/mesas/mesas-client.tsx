@@ -15,6 +15,7 @@ export type MesaFila = {
   forma: "cuadrada" | "redonda" | "alargada";
   posX: number | null;
   posY: number | null;
+  combinable: boolean;
   activo: boolean;
 };
 
@@ -258,9 +259,19 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
                     />
                   </span>
                   <button
-                    onClick={() => ejecutar(() => actualizarMesa(mesa.id, { activo: !mesa.activo }))}
+                    onClick={() => ejecutar(() => actualizarMesa(mesa.id, { combinable: !mesa.combinable }))}
+                    title="Si puede juntarse con otra mesa cercana para grupos grandes"
                     className={cn(
                       "ml-auto cursor-pointer rounded-full px-3 py-1 text-[12px] font-semibold transition-colors",
+                      mesa.combinable ? "bg-warn-soft text-warn" : "bg-chip text-ink-soft",
+                    )}
+                  >
+                    {mesa.combinable ? "se junta" : "fija"}
+                  </button>
+                  <button
+                    onClick={() => ejecutar(() => actualizarMesa(mesa.id, { activo: !mesa.activo }))}
+                    className={cn(
+                      "cursor-pointer rounded-full px-3 py-1 text-[12px] font-semibold transition-colors",
                       mesa.activo ? "bg-good-soft text-good hover:bg-bad-soft hover:text-bad" : "bg-chip text-ink-soft",
                     )}
                   >

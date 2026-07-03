@@ -274,27 +274,30 @@ function FilaReserva({
       </div>
 
       {!terminal && (
-        <select
-          value={r.mesaId ?? ""}
-          onChange={(e) =>
-            onEjecutar(() => reasignarMesa(r.id, e.target.value === "auto" ? "auto" : e.target.value || null))
-          }
-          disabled={ocupado || r.estado === "sentada"}
-          className={cn(
-            "rounded-lg border px-2.5 py-1.5 text-sm font-semibold outline-none focus:border-brand",
-            r.mesaId ? "border-line bg-card" : "border-bad bg-bad-soft text-bad",
-          )}
-        >
-          <option value="">⚠ sin mesa</option>
-          <option value="auto">✨ auto</option>
-          {mesas
-            .filter((m) => m.capacidad >= r.comensales || m.id === r.mesaId)
-            .map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nombre} ({m.capacidad})
-              </option>
-            ))}
-        </select>
+        <span className="flex items-center gap-1.5">
+          <select
+            value={r.mesaId ?? ""}
+            onChange={(e) =>
+              onEjecutar(() => reasignarMesa(r.id, e.target.value === "auto" ? "auto" : e.target.value || null))
+            }
+            disabled={ocupado || r.estado === "sentada"}
+            className={cn(
+              "rounded-lg border px-2.5 py-1.5 text-sm font-semibold outline-none focus:border-brand",
+              r.mesaId ? "border-line bg-card" : "border-bad bg-bad-soft text-bad",
+            )}
+          >
+            <option value="">⚠ sin mesa</option>
+            <option value="auto">✨ auto</option>
+            {mesas
+              .filter((m) => m.capacidad >= r.comensales || m.id === r.mesaId)
+              .map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre} ({m.capacidad})
+                </option>
+              ))}
+          </select>
+          {r.mesa2Nombre && <Chip tone="warn">+ {r.mesa2Nombre} juntas</Chip>}
+        </span>
       )}
 
       {r.estado === "confirmada" && (

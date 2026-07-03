@@ -40,4 +40,24 @@ export const CONFIG_RESERVAS = {
   // extra para reservarlas a grupos grandes que no caben en otro sitio.
   mesaGrandeDesde: 6,
   penalizacionMesaGrande: 15,
+
+  // ── Juntar mesas (grupos que no caben en ninguna mesa sola) ─────────
+  combinarMesas: {
+    activado: true,
+
+    // Solo se juntan mesas CERCANAS EN EL PLANO (distancia en % del lienzo)
+    // y de la misma zona. Con 18, dos mesas contiguas de tu plano se juntan;
+    // una de sala con una de la otra punta, no. Si arrastras las mesas en
+    // Distribución, esto se recalcula solo.
+    distanciaMaxPlano: 18,
+
+    // Sillas que se pierden al juntar dos mesas (las cabeceras que chocan).
+    // Con 0, dos de 4 sientan a 8; si tus mesas pierden sitio al juntarlas,
+    // pon 2 y dos de 4 sentarán a 6.
+    sillasPerdidas: 0,
+
+    // Juntar mesas da trabajo (mover, remontar): esta penalización hace que
+    // el algoritmo solo junte cuando NINGUNA mesa sola encaja razonablemente.
+    penalizacion: 20,
+  },
 } as const;

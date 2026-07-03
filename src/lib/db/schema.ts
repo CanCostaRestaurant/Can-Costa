@@ -219,6 +219,8 @@ export const mesas = pgTable("mesas", {
   zona: mesaZonaEnum("zona").notNull().default("sala"),
   capacidad: integer("capacidad").notNull().default(4),
   forma: mesaFormaEnum("forma").notNull().default("cuadrada"),
+  combinable: boolean("combinable").notNull().default(true), // puede juntarse con otra cercana
+
   posX: integer("pos_x"), // null = sin colocar en el plano
   posY: integer("pos_y"),
   orden: integer("orden"),
@@ -285,6 +287,7 @@ export const reservas = pgTable(
     duracionMin: integer("duracion_min").notNull().default(90),
     zonaPreferida: mesaZonaEnum("zona_preferida"), // null = sin preferencia
     mesaId: uuid("mesa_id").references(() => mesas.id, { onDelete: "set null" }), // null = sin mesa (aviso)
+    mesa2Id: uuid("mesa2_id").references(() => mesas.id, { onDelete: "set null" }), // segunda mesa al juntar
     estado: reservaEstadoEnum("estado").notNull().default("confirmada"),
     notas: text("notas"),
     origen: text("origen").notNull().default("manual"), // futuro: 'web'

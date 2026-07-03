@@ -4,6 +4,7 @@
 //   de 8s por consulta (conPlazo) + estados VACÍOS y console.error: la app
 //   degrada con elegancia en vez de devolver un 500 o colgarse minutos.
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, max, sum } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { conPlazo, getDb, resetDb, schema } from "./index";
 import {
   COMPRAS_SEMANA,
@@ -1050,6 +1051,7 @@ export type ReservaDia = {
   zonaPreferida: "sala" | "terraza" | "barra" | null;
   mesaId: string | null;
   mesaNombre: string | null;
+  mesa2Nombre: string | null; // segunda mesa cuando se juntan
   estado: string;
   notas: string | null;
 };
@@ -1078,11 +1080,17 @@ export async function getReservasDia(fecha: string): Promise<DiaReservas> {
   try {
     return await conPlazo(
       (async (): Promise<DiaReservas> => {
+        const mesas2 = alias(schema.mesas, "mesas2");
         const [filas, mesasActivas] = await Promise.all([
           db
-            .select({ reserva: schema.reservas, mesaNombre: schema.mesas.nombre })
+            .select({
+              reserva: schema.reservas,
+              mesaNombre: schema.mesas.nombre,
+              mesa2Nombre: mesas2.nombre,
+            })
             .from(schema.reservas)
             .leftJoin(schema.mesas, eq(schema.reservas.mesaId, schema.mesas.id))
+            .leftJoin(mesas2, eq(schema.reservas.mesa2Id, mesas2.id))
             .where(eq(schema.reservas.fecha, fecha))
             .orderBy(asc(schema.reservas.hora)),
           db.select().from(schema.mesas).where(eq(schema.mesas.activo, true)).orderBy(asc(schema.mesas.orden)),
@@ -1098,6 +1106,7 @@ export async function getReservasDia(fecha: string): Promise<DiaReservas> {
           zonaPreferida: f.reserva.zonaPreferida,
           mesaId: f.reserva.mesaId,
           mesaNombre: f.mesaNombre,
+          mesa2Nombre: f.mesa2Nombre,
           estado: f.reserva.estado,
           notas: f.reserva.notas,
         }));

@@ -27,7 +27,15 @@ type Db = NonNullable<ReturnType<typeof getDb>>;
 
 async function mesasAsignables(db: Db): Promise<MesaAsignable[]> {
   const filas = await conPlazo(db.select().from(schema.mesas).where(eq(schema.mesas.activo, true)));
-  return filas.map((m) => ({ id: m.id, nombre: m.nombre, zona: m.zona, capacidad: m.capacidad }));
+  return filas.map((m) => ({
+    id: m.id,
+    nombre: m.nombre,
+    zona: m.zona,
+    capacidad: m.capacidad,
+    combinable: m.combinable,
+    posX: m.posX,
+    posY: m.posY,
+  }));
 }
 
 async function ocupacionesDelDia(db: Db, fecha: string, excluirId?: string): Promise<Ocupacion[]> {
@@ -44,9 +52,12 @@ async function ocupacionesDelDia(db: Db, fecha: string, excluirId?: string): Pro
         ),
       ),
   );
-  return filas.map((f) => {
+  return filas.flatMap((f) => {
     const inicio = horaAMinutos(f.hora);
-    return { mesaId: f.mesaId!, inicioMin: inicio, finMin: inicio + f.duracionMin };
+    const fin = inicio + f.duracionMin;
+    const bloques: Ocupacion[] = [{ mesaId: f.mesaId!, inicioMin: inicio, finMin: fin }];
+    if (f.mesa2Id) bloques.push({ mesaId: f.mesa2Id, inicioMin: inicio, finMin: fin });
+    return bloques;
   });
 }
 
@@ -93,6 +104,7 @@ export async function crearReserva(datos: {
         duracionMin,
         zonaPreferida: datos.zonaPreferida ?? null,
         mesaId: sugerencia?.mesaId ?? null,
+        mesa2Id: sugerencia?.mesa2Id ?? null,
         notas: datos.notas?.trim() || null,
       }),
     );
@@ -100,7 +112,11 @@ export async function crearReserva(datos: {
     revalidatePath("/reservas");
     return {
       ok: true,
-      mesaNombre: sugerencia?.mesaNombre ?? null,
+      mesaNombre: sugerencia
+        ? sugerencia.mesa2Nombre
+          ? `${sugerencia.mesaNombre} + ${sugerencia.mesa2Nombre}`
+          : sugerencia.mesaNombre
+        : null,
       motivo: sugerencia?.motivo ?? "sin mesa libre para esa hora — revisa o reoptimiza",
     };
   } catch (e) {
@@ -116,6 +132,7 @@ export async function reasignarMesa(reservaId: string, mesaId: string | "auto" |
     if (!reserva) return { ok: false, error: "Reserva no encontrada" };
 
     let nuevaMesa: string | null = null;
+    let nuevaMesa2: string | null = null;
     let motivo = "sin mesa";
     if (mesaId === "auto") {
       const [mesas, ocupaciones] = await Promise.all([
@@ -134,6 +151,7 @@ export async function reasignarMesa(reservaId: string, mesaId: string | "auto" |
       );
       if (!sugerencia) return { ok: false, error: "No hay mesa libre que encaje a esa hora" };
       nuevaMesa = sugerencia.mesaId;
+      nuevaMesa2 = sugerencia.mesa2Id;
       motivo = sugerencia.motivo;
     } else if (mesaId) {
       // Asignación manual: validar solape en esa mesa.
@@ -149,7 +167,10 @@ export async function reasignarMesa(reservaId: string, mesaId: string | "auto" |
     }
 
     await conPlazo(
-      db.update(schema.reservas).set({ mesaId: nuevaMesa, updatedAt: new Date() }).where(eq(schema.reservas.id, reservaId)),
+      db
+        .update(schema.reservas)
+        .set({ mesaId: nuevaMesa, mesa2Id: nuevaMesa2, updatedAt: new Date() })
+        .where(eq(schema.reservas.id, reservaId)),
     );
     revalidatePath("/reservas");
     return { ok: true, motivo };
@@ -260,7 +281,11 @@ export async function reoptimizarDia(fecha: string): Promise<Resultado & { asign
       await conPlazo(
         db
           .update(schema.reservas)
-          .set({ mesaId: sugerencia?.mesaId ?? null, updatedAt: new Date() })
+          .set({
+            mesaId: sugerencia?.mesaId ?? null,
+            mesa2Id: sugerencia?.mesa2Id ?? null,
+            updatedAt: new Date(),
+          })
           .where(eq(schema.reservas.id, reservaId)),
       );
     }

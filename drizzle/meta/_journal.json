@@ -43,6 +43,13 @@
       "when": 1783062731361,
       "tag": "0005_wandering_longshot",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783064137726,
+      "tag": "0006_slow_the_anarchist",
+      "breakpoints": true
     }
   ]
 }
