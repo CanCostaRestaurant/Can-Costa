@@ -10,7 +10,18 @@ import {
   type MesaAsignable,
   type Ocupacion,
 } from "@/lib/reservas/asignador";
-import { CONFIG_RESERVAS } from "@/lib/reservas/config";
+import { duracionPorComensales, type MandosReservas } from "@/lib/reservas/config";
+import { cargarMandos, guardarMandos } from "@/lib/reservas/mandos-db";
+import {
+  calcularDisponibilidad,
+  minutosAHora,
+  type SlotDisponibilidad,
+} from "@/lib/reservas/disponibilidad";
+import {
+  enviarEmailConfirmacion,
+  enviarSmsConfirmacion,
+  type DatosConfirmacion,
+} from "@/lib/notificaciones/reserva";
 import { buscarCoincidencia, normalizarEmail } from "@/lib/clientes/identidad";
 import { abrirTicket } from "../tpv/actions";
 
@@ -122,7 +133,8 @@ export async function crearReserva(datos: {
   comensales: number;
   zonaPreferida?: "sala" | "terraza" | "barra" | null;
   notas?: string;
-}): Promise<Resultado & { cliente?: string | null }> {
+  notificar?: { email: boolean; sms: boolean }; // confirmación automática al cliente
+}): Promise<Resultado & { cliente?: string | null; notificacion?: string | null }> {
   const db = getDb();
   if (!db) return SIN_BD;
   if (!datos.nombre.trim()) return { ok: false, error: "Pon el nombre de la reserva" };
@@ -133,21 +145,55 @@ export async function crearReserva(datos: {
   }
 
   try {
-    const duracionMin = CONFIG_RESERVAS.duracionPorComensales(datos.comensales);
+    const mandos = await cargarMandos();
+    const duracionMin = duracionPorComensales(datos.comensales, mandos);
     const [mesas, ocupaciones] = await Promise.all([mesasAsignables(db), ocupacionesDelDia(db, datos.fecha)]);
 
+    const inicioMin = horaAMinutos(datos.hora);
     const sugerencia = sugerirMesa(
       {
         comensales: datos.comensales,
-        inicioMin: horaAMinutos(datos.hora),
+        inicioMin,
         duracionMin,
         zonaPreferida: datos.zonaPreferida ?? null,
       },
       mesas,
       ocupaciones,
+      mandos.margenLimpiezaMin,
+    );
+
+    // Aviso (no bloqueo) si la hora cae fuera de los turnos de servicio:
+    // el personal puede forzarla, como el "Horas no disponibles (asignar)"
+    // de CoverManager.
+    const enServicio = mandos.servicios.some(
+      (s) => datos.hora >= s.inicio && datos.hora <= s.fin,
     );
 
     const cliente = await vincularCliente(db, datos);
+
+    // Confirmación al cliente ANTES de insertar los timestamps: se apuntan
+    // solo los envíos que realmente salieron.
+    const hastaHora = minutosAHora(inicioMin + duracionMin);
+    const mesaNombre = sugerencia
+      ? sugerencia.mesa2Nombre
+        ? `${sugerencia.mesaNombre} + ${sugerencia.mesa2Nombre}`
+        : sugerencia.mesaNombre
+      : null;
+
+    const confirmacion: DatosConfirmacion = {
+      nombre: datos.nombre.trim(),
+      email: datos.email?.trim() || null,
+      telefono: datos.telefono?.trim() || null,
+      fecha: datos.fecha,
+      hora: datos.hora,
+      comensales: Math.round(datos.comensales),
+      hastaHora,
+      mesa: mesaNombre,
+    };
+    const [resEmail, resSms] = await Promise.all([
+      datos.notificar?.email ? enviarEmailConfirmacion(confirmacion, mandos) : Promise.resolve(null),
+      datos.notificar?.sms ? enviarSmsConfirmacion(confirmacion, mandos) : Promise.resolve(null),
+    ]);
 
     await conPlazo(
       db.insert(schema.reservas).values({
@@ -163,26 +209,92 @@ export async function crearReserva(datos: {
         mesaId: sugerencia?.mesaId ?? null,
         mesa2Id: sugerencia?.mesa2Id ?? null,
         notas: datos.notas?.trim() || null,
+        notifEmailAt: resEmail?.enviado ? new Date() : null,
+        notifSmsAt: resSms?.enviado ? new Date() : null,
       }),
     );
+
+    const notifPartes: string[] = [];
+    if (resEmail) notifPartes.push(resEmail.enviado ? "✉ email enviado" : `✉ email NO enviado: ${resEmail.motivo}`);
+    if (resSms) notifPartes.push(resSms.enviado ? "📱 SMS enviado" : `📱 SMS NO enviado: ${resSms.motivo}`);
 
     revalidatePath("/reservas");
     revalidatePath("/clientes");
     return {
       ok: true,
-      mesaNombre: sugerencia
-        ? sugerencia.mesa2Nombre
-          ? `${sugerencia.mesaNombre} + ${sugerencia.mesa2Nombre}`
-          : sugerencia.mesaNombre
-        : null,
-      motivo: sugerencia?.motivo ?? "sin mesa libre para esa hora — revisa o reoptimiza",
+      mesaNombre,
+      motivo: [
+        sugerencia?.motivo ?? "sin mesa libre para esa hora — revisa o reoptimiza",
+        !enServicio ? "⚠ hora fuera de los turnos de servicio" : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
       cliente:
         cliente.reservasPrevias > 0
           ? [`⭐ cliente habitual — ${cliente.reservasPrevias + 1}ª reserva`, ...cliente.avisos].join(" · ")
           : cliente.avisos.join(" · ") || null,
+      notificacion: notifPartes.join(" · ") || null,
     };
   } catch (e) {
     return fallo("crearReserva", e);
+  }
+}
+
+// Parrilla de horas estilo CoverManager: estado de cada tramo para una
+// fecha y tamaño de grupo (la pinta el formulario de nueva reserva).
+export async function disponibilidadDia(
+  fecha: string,
+  comensales: number,
+): Promise<{ ok: boolean; slots?: SlotDisponibilidad[]; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "Base de datos no configurada" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, error: "Fecha no válida" };
+  const pax = Math.round(comensales);
+  if (!Number.isFinite(pax) || pax < 1 || pax > 40) return { ok: false, error: "Comensales no válidos" };
+
+  try {
+    const mandos = await cargarMandos();
+    const [mesas, ocupaciones, reservasDia] = await Promise.all([
+      mesasAsignables(db),
+      ocupacionesDelDia(db, fecha),
+      conPlazo(
+        db
+          .select({ hora: schema.reservas.hora, comensales: schema.reservas.comensales })
+          .from(schema.reservas)
+          .where(
+            and(
+              eq(schema.reservas.fecha, fecha),
+              inArray(schema.reservas.estado, ["confirmada", "sentada"]),
+            ),
+          ),
+      ),
+    ]);
+
+    const entradas = reservasDia.map((r) => ({
+      inicioMin: horaAMinutos(r.hora),
+      comensales: r.comensales,
+    }));
+
+    return { ok: true, slots: calcularDisponibilidad(pax, mesas, ocupaciones, entradas, mandos) };
+  } catch (e) {
+    const f = fallo("disponibilidadDia", e);
+    return { ok: false, error: f.error };
+  }
+}
+
+// Mandos del cover manager (los edita /reservas/ajustes).
+export async function obtenerMandos(): Promise<MandosReservas> {
+  return cargarMandos();
+}
+
+export async function guardarMandosReservas(mandos: MandosReservas): Promise<Resultado> {
+  try {
+    await guardarMandos(mandos);
+    revalidatePath("/reservas");
+    revalidatePath("/reservas/ajustes");
+    return { ok: true };
+  } catch (e) {
+    return fallo("guardarMandosReservas", e);
   }
 }
 
@@ -196,6 +308,7 @@ export async function reasignarMesa(reservaId: string, mesaId: string | "auto" |
     let nuevaMesa: string | null = null;
     let nuevaMesa2: string | null = null;
     let motivo = "sin mesa";
+    const mandos = await cargarMandos();
     if (mesaId === "auto") {
       const [mesas, ocupaciones] = await Promise.all([
         mesasAsignables(db),
@@ -210,6 +323,7 @@ export async function reasignarMesa(reservaId: string, mesaId: string | "auto" |
         },
         mesas,
         ocupaciones,
+        mandos.margenLimpiezaMin,
       );
       if (!sugerencia) return { ok: false, error: "No hay mesa libre que encaje a esa hora" };
       nuevaMesa = sugerencia.mesaId;
@@ -219,9 +333,10 @@ export async function reasignarMesa(reservaId: string, mesaId: string | "auto" |
       // Asignación manual: validar solape en esa mesa.
       const ocupaciones = await ocupacionesDelDia(db, reserva.fecha, reservaId);
       const inicio = horaAMinutos(reserva.hora);
-      const fin = inicio + reserva.duracionMin + CONFIG_RESERVAS.margenLimpiezaMin;
+      const margen = mandos.margenLimpiezaMin;
+      const fin = inicio + reserva.duracionMin + margen;
       const choca = ocupaciones.some(
-        (o) => o.mesaId === mesaId && o.inicioMin < fin && inicio < o.finMin + CONFIG_RESERVAS.margenLimpiezaMin,
+        (o) => o.mesaId === mesaId && o.inicioMin < fin && inicio < o.finMin + margen,
       );
       if (choca) return { ok: false, error: "Esa mesa ya tiene una reserva que se solapa" };
       nuevaMesa = mesaId;
@@ -326,6 +441,7 @@ export async function reoptimizarDia(fecha: string): Promise<Resultado & { asign
       return { mesaId: f.mesaId!, inicioMin: inicio, finMin: inicio + f.duracionMin };
     });
 
+    const mandos = await cargarMandos();
     const resultado = reoptimizarAsignaciones(
       pendientes.map((r) => ({
         id: r.id,
@@ -336,6 +452,7 @@ export async function reoptimizarDia(fecha: string): Promise<Resultado & { asign
       })),
       mesas,
       fijas,
+      mandos.margenLimpiezaMin,
     );
 
     let asignadas = 0;

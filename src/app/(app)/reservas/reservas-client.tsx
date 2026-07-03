@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Phone, Sparkles, Users } from "lucide-react";
+import { CalendarDays, Phone, Settings2, Sparkles, Users } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
 import { type DiaReservas, type ReservaDia } from "@/lib/db/queries";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ import {
   reoptimizarDia,
   sentarReserva,
 } from "./actions";
+import { SelectorHoras } from "./selector-horas";
 
 const ZONAS = [
   { id: "", nombre: "Sin preferencia" },
@@ -66,6 +68,13 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
         subtitulo="Cover manager: cada reserva con la mejor mesa posible"
         derecha={
           <div className="flex items-center gap-2">
+            <Link
+              href="/reservas/ajustes"
+              title="Ajustes: doblaje, turnos y cupos"
+              className="card flex cursor-pointer items-center gap-2 rounded-full! px-3.5 py-2 text-[13.5px] font-semibold transition-colors hover:border-brand"
+            >
+              <Settings2 className="size-4 text-ink-soft" /> Ajustes
+            </Link>
             <button
               onClick={() =>
                 ejecutar(
@@ -165,28 +174,23 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
               onChange={(e) => setEmail(e.target.value)}
               className="rounded-xl border border-line bg-card px-3.5 py-2.5 text-[14.5px] outline-none focus:border-brand"
             />
-            <div className="flex gap-2">
-              <label className="flex-1 text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
-                Hora
-                <input
-                  type="time"
-                  value={hora}
-                  onChange={(e) => setHora(e.target.value)}
-                  className="mt-1 block w-full rounded-xl border border-line bg-card px-3 py-2.5 font-body text-[14.5px] font-normal tracking-normal outline-none focus:border-brand"
-                />
-              </label>
-              <label className="w-24 text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
-                Pax
-                <input
-                  type="number"
-                  min="1"
-                  max="40"
-                  value={pax}
-                  onChange={(e) => setPax(e.target.value)}
-                  className="mt-1 block w-full rounded-xl border border-line bg-card px-3 py-2.5 font-body text-[14.5px] font-normal tracking-normal outline-none focus:border-brand"
-                />
-              </label>
-            </div>
+            <label className="w-28 text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
+              Comensales
+              <input
+                type="number"
+                min="1"
+                max="40"
+                value={pax}
+                onChange={(e) => setPax(e.target.value)}
+                className="mt-1 block w-full rounded-xl border border-line bg-card px-3 py-2.5 font-body text-[14.5px] font-normal tracking-normal outline-none focus:border-brand"
+              />
+            </label>
+            <SelectorHoras
+              fecha={datos.fecha}
+              pax={parseInt(pax, 10) || 0}
+              hora={hora}
+              onHora={setHora}
+            />
             <label className="text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
               Zona preferida
               <select
@@ -207,8 +211,8 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
               onChange={(e) => setNotas(e.target.value)}
               className="rounded-xl border border-line bg-card px-3.5 py-2.5 text-[14.5px] outline-none focus:border-brand"
             />
-            <button
-              onClick={() =>
+            {(() => {
+              const guardar = (notificar: boolean) =>
                 ejecutar(
                   () =>
                     crearReserva({
@@ -220,9 +224,17 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
                       comensales: parseInt(pax, 10),
                       zonaPreferida: (zona || null) as "sala" | "terraza" | "barra" | null,
                       notas,
+                      notificar: notificar
+                        ? { email: Boolean(email.trim()), sms: Boolean(telefono.trim()) }
+                        : undefined,
                     }),
                   (r) => {
-                    const x = r as { mesaNombre?: string | null; motivo?: string; cliente?: string | null };
+                    const x = r as {
+                      mesaNombre?: string | null;
+                      motivo?: string;
+                      cliente?: string | null;
+                      notificacion?: string | null;
+                    };
                     setNombre("");
                     setTelefono("");
                     setEmail("");
@@ -230,15 +242,30 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
                     const base = x.mesaNombre
                       ? `Asignada ${x.mesaNombre} — ${x.motivo}`
                       : `Reserva creada SIN MESA — ${x.motivo}`;
-                    return x.cliente ? `${base} · ${x.cliente}` : base;
+                    return [base, x.cliente, x.notificacion].filter(Boolean).join(" · ");
                   },
-                )
-              }
-              disabled={!nombre.trim() || ocupado}
-              className="cursor-pointer rounded-xl bg-ink px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-black disabled:opacity-40"
-            >
-              {ocupado ? "Guardando…" : "Reservar y asignar mesa"}
-            </button>
+                );
+              const hayContacto = Boolean(email.trim() || telefono.trim());
+              return (
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => guardar(true)}
+                    disabled={!nombre.trim() || !hayContacto || ocupado}
+                    title={hayContacto ? "Envía la confirmación por los canales con datos (email/SMS)" : "Añade email o teléfono para poder notificar"}
+                    className="cursor-pointer rounded-xl bg-ink px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-black disabled:opacity-40"
+                  >
+                    {ocupado ? "Guardando…" : "Reservar y notificar al cliente"}
+                  </button>
+                  <button
+                    onClick={() => guardar(false)}
+                    disabled={!nombre.trim() || ocupado}
+                    className="cursor-pointer rounded-xl border border-line bg-card px-5 py-2.5 text-[13.5px] font-semibold transition-colors hover:border-brand disabled:opacity-40"
+                  >
+                    Solo reservar
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

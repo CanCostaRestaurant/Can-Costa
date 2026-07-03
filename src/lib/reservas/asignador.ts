@@ -37,8 +37,7 @@ export function horaAMinutos(hora: string): number {
   return h * 60 + (m || 0);
 }
 
-function solapa(sol: Solicitud, ocupacion: Ocupacion): boolean {
-  const margen = CONFIG_RESERVAS.margenLimpiezaMin;
+function solapa(sol: Solicitud, ocupacion: Ocupacion, margen: number): boolean {
   const inicio = sol.inicioMin;
   const fin = sol.inicioMin + sol.duracionMin + margen;
   return ocupacion.inicioMin < fin && inicio < ocupacion.finMin + margen;
@@ -53,11 +52,13 @@ export function sugerirMesa(
   sol: Solicitud,
   mesas: MesaAsignable[],
   ocupaciones: Ocupacion[],
+  margenLimpiezaMin: number = CONFIG_RESERVAS.margenLimpiezaMin,
 ): Sugerencia | null {
   const cfg = CONFIG_RESERVAS;
   let mejor: Sugerencia | null = null;
 
-  const libre = (mesa: MesaAsignable) => !ocupaciones.some((o) => o.mesaId === mesa.id && solapa(sol, o));
+  const libre = (mesa: MesaAsignable) =>
+    !ocupaciones.some((o) => o.mesaId === mesa.id && solapa(sol, o, margenLimpiezaMin));
 
   // ── Mesas individuales ──
   for (const mesa of mesas) {
@@ -148,6 +149,7 @@ export function reoptimizarAsignaciones(
   reservas: ReservaAReoptimizar[],
   mesas: MesaAsignable[],
   ocupacionesFijas: Ocupacion[], // reservas ya sentadas: no se mueven
+  margenLimpiezaMin: number = CONFIG_RESERVAS.margenLimpiezaMin,
 ): Map<string, Sugerencia | null> {
   const orden = [...reservas].sort(
     (a, b) => b.comensales - a.comensales || a.inicioMin - b.inicioMin,
@@ -156,7 +158,7 @@ export function reoptimizarAsignaciones(
   const resultado = new Map<string, Sugerencia | null>();
 
   for (const reserva of orden) {
-    const sugerencia = sugerirMesa(reserva, mesas, ocupaciones);
+    const sugerencia = sugerirMesa(reserva, mesas, ocupaciones, margenLimpiezaMin);
     resultado.set(reserva.id, sugerencia);
     if (sugerencia) {
       const fin = reserva.inicioMin + reserva.duracionMin;

@@ -1,25 +1,132 @@
 // ═════════════════════════════════════════════════════════════════════
 // LOS MANDOS DEL ALGORITMO DE RESERVAS
-// Aquí se afina cómo asigna mesas el cover manager. Cada número tiene un
-// efecto concreto y se puede tocar sin miedo: el asignador solo compara
-// puntuaciones (menos puntos = mejor mesa).
+//
+// Dos niveles, como CoverManager:
+//  - MandosReservas: lo que el restaurante toca a diario desde
+//    /reservas/ajustes (doblaje, turnos, cupos). Persisten en la tabla
+//    reservas_config y AQUÍ solo viven los valores por defecto.
+//  - CONFIG_RESERVAS: los pesos del algoritmo de asignación. Se afinan
+//    en código porque cambiarlos sin entender el scoring rompe el
+//    reparto (menos puntos = mejor mesa).
 // ═════════════════════════════════════════════════════════════════════
 
+// ── Mandos editables ───────────────────────────────────────────────────
+
+export type ServicioTurno = {
+  nombre: string; // "Comida", "Cena"
+  inicio: string; // "13:00" — primer tramo reservable
+  fin: string; // "15:30" — última hora de entrada (last seating)
+};
+
+export type MandosReservas = {
+  // DOBLAJE: cuánto tiempo bloquea su mesa cada reserva según el tamaño
+  // del grupo. Es el mando que decide cada cuánto se "dobla" una mesa:
+  // 60 = doblar cada hora, 120 = cada dos horas. Al cliente se le informa
+  // del tiempo del que dispone (como hace CoverManager).
+  doblaje: {
+    hasta2: number; // parejas
+    hasta4: number;
+    hasta6: number;
+    grandes: number; // 7 o más
+  };
+
+  // Minutos entre reservas de la misma mesa (limpiar y remontar).
+  margenLimpiezaMin: number;
+
+  // Tramos de la parrilla de horas (15 = como CoverManager).
+  pasoMin: number;
+
+  // Cupo de comensales NUEVOS que pueden entrar por tramo (el "(0/1285)"
+  // de CoverManager): controla el ritmo de entrada en cocina. 0 = sin límite.
+  cupoPorTramo: number;
+
+  // Turnos de servicio: fuera de estas franjas la hora sale como
+  // "no disponible" (reservable solo a mano, forzando).
+  servicios: ServicioTurno[];
+
+  // Datos del local para las confirmaciones por email/SMS.
+  restaurante: {
+    nombre: string;
+    direccion: string;
+    telefono: string;
+    mapsUrl: string; // enlace de Google Maps; vacío = se genera con nombre+dirección
+  };
+};
+
+export const MANDOS_POR_DEFECTO: MandosReservas = {
+  doblaje: { hasta2: 75, hasta4: 90, hasta6: 105, grandes: 120 },
+  margenLimpiezaMin: 10,
+  pasoMin: 15,
+  cupoPorTramo: 0,
+  servicios: [
+    { nombre: "Comida", inicio: "13:00", fin: "15:30" },
+    { nombre: "Cena", inicio: "20:00", fin: "23:00" },
+  ],
+  restaurante: {
+    nombre: "Can Costa",
+    direccion: "Barcelona",
+    telefono: "",
+    mapsUrl: "",
+  },
+};
+
+export function duracionPorComensales(comensales: number, mandos: MandosReservas): number {
+  if (comensales <= 2) return mandos.doblaje.hasta2;
+  if (comensales <= 4) return mandos.doblaje.hasta4;
+  if (comensales <= 6) return mandos.doblaje.hasta6;
+  return mandos.doblaje.grandes;
+}
+
+// Mezcla lo guardado en BD sobre los defaults (sobrevive a mandos nuevos
+// añadidos después de guardar) y sanea números fuera de rango.
+export function normalizarMandos(crudo: unknown): MandosReservas {
+  const c = (crudo ?? {}) as Partial<MandosReservas>;
+  const d = MANDOS_POR_DEFECTO;
+
+  const minutos = (v: unknown, porDefecto: number, min = 15, max = 360): number => {
+    const n = typeof v === "number" ? v : NaN;
+    return Number.isFinite(n) && n >= min && n <= max ? Math.round(n) : porDefecto;
+  };
+  const horaValida = (v: unknown): v is string => typeof v === "string" && /^\d{2}:\d{2}$/.test(v);
+
+  const servicios = Array.isArray(c.servicios)
+    ? c.servicios
+        .filter((s) => s && horaValida(s.inicio) && horaValida(s.fin) && s.inicio < s.fin)
+        .map((s) => ({ nombre: String(s.nombre || "Servicio").slice(0, 30), inicio: s.inicio, fin: s.fin }))
+        .slice(0, 6)
+    : d.servicios;
+
+  return {
+    doblaje: {
+      hasta2: minutos(c.doblaje?.hasta2, d.doblaje.hasta2),
+      hasta4: minutos(c.doblaje?.hasta4, d.doblaje.hasta4),
+      hasta6: minutos(c.doblaje?.hasta6, d.doblaje.hasta6),
+      grandes: minutos(c.doblaje?.grandes, d.doblaje.grandes),
+    },
+    margenLimpiezaMin: minutos(c.margenLimpiezaMin, d.margenLimpiezaMin, 0, 60),
+    pasoMin: c.pasoMin === 30 ? 30 : 15, // solo 15 o 30
+    cupoPorTramo: minutos(c.cupoPorTramo, d.cupoPorTramo, 0, 500),
+    servicios: servicios.length ? servicios : d.servicios,
+    restaurante: {
+      nombre: String(c.restaurante?.nombre || d.restaurante.nombre).slice(0, 80),
+      direccion: String(c.restaurante?.direccion ?? d.restaurante.direccion).slice(0, 160),
+      telefono: String(c.restaurante?.telefono ?? "").slice(0, 30),
+      mapsUrl: String(c.restaurante?.mapsUrl ?? "").slice(0, 300),
+    },
+  };
+}
+
+// ── Pesos del algoritmo (solo código) ──────────────────────────────────
+
 export const CONFIG_RESERVAS = {
-  // ── Duración estimada de la mesa según el tamaño del grupo ──────────
-  // Una pareja cena más rápido que una mesa de 8. Esto decide cuánto
-  // tiempo "bloquea" cada reserva su mesa (y por tanto cuántos turnos
-  // caben por servicio). Si el local rota más rápido, baja estos números.
+  // Compat: duración con los mandos por defecto (los llamantes con mandos
+  // de BD deben usar duracionPorComensales(pax, mandos)).
   duracionPorComensales(comensales: number): number {
-    if (comensales <= 2) return 75; // minutos
-    if (comensales <= 4) return 90;
-    return 120;
+    return duracionPorComensales(comensales, MANDOS_POR_DEFECTO);
   },
 
-  // ── Margen entre reservas de la misma mesa ──────────────────────────
-  // Tiempo para limpiar y remontar. Subirlo da aire al servicio;
-  // bajarlo mete más turnos.
-  margenLimpiezaMin: 10,
+  // Margen por defecto; el asignador acepta el margen real por parámetro.
+  margenLimpiezaMin: MANDOS_POR_DEFECTO.margenLimpiezaMin,
 
   // ── Peso del desperdicio de sillas (EL MANDO PRINCIPAL) ─────────────
   // Cada silla vacía suma estos puntos. Con 10, sentar 2 personas en una

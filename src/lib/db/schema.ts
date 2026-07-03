@@ -372,11 +372,23 @@ export const reservas = pgTable(
     estado: reservaEstadoEnum("estado").notNull().default("confirmada"),
     notas: text("notas"),
     origen: text("origen").notNull().default("manual"), // futuro: 'web'
+    // Confirmación automática al cliente (null = no enviada):
+    notifEmailAt: timestamp("notif_email_at", { withTimezone: true }),
+    notifSmsAt: timestamp("notif_sms_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("reservas_fecha_idx").on(t.fecha), index("reservas_mesa_idx").on(t.mesaId)],
 );
+
+// Mandos del cover manager editables desde /reservas/ajustes (doblaje por
+// tamaño de grupo, turnos de servicio, cupo por tramo…). Una sola fila
+// jsonb: el shape vive en lib/reservas/config.ts (MandosReservas).
+export const reservasConfig = pgTable("reservas_config", {
+  id: integer("id").primaryKey().default(1),
+  config: jsonb("config").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ---------------------------------------------------------------------
 // precios  (histórico: un punto por compra de un producto)
