@@ -25,16 +25,23 @@ import { cerrarSesion } from "@/app/login/actions";
 type Item = { href: string; label: string; icon: LucideIcon; chip?: "nuevo" | "pronto" };
 
 const GRUPOS: { titulo: string; items: Item[] }[] = [
+  // Grupos calcados de Haddock: Negocio, Gastos, Compras (mismo contenido).
   {
     titulo: "Negocio",
     items: [
       { href: "/", label: "Home", icon: Home },
-      { href: "/tpv", label: "TPV", icon: Tablet },
-      { href: "/reservas", label: "Reservas", icon: CalendarDays },
-      { href: "/clientes", label: "Clientes", icon: BookUser, chip: "nuevo" },
       { href: "/dashboard", label: "Dashboard", icon: ChartColumn },
       { href: "/ventas", label: "Ventas", icon: Coins },
       { href: "/escandallos", label: "Escandallos", icon: ChefHat },
+    ],
+  },
+  // Extras de Can Costa que no existen en Haddock, en su propio apartado.
+  {
+    titulo: "Gestión",
+    items: [
+      { href: "/tpv", label: "TPV", icon: Tablet },
+      { href: "/reservas", label: "Reservas", icon: CalendarDays },
+      { href: "/clientes", label: "Clientes", icon: BookUser, chip: "nuevo" },
     ],
   },
   {
