@@ -264,10 +264,13 @@ function FilaReserva({
   const terminal = r.estado === "cancelada" || r.estado === "no_show";
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-3 border-b border-line px-4 py-3 last:border-none", terminal && "opacity-45")}>
-      <b className="w-14 font-display text-lg font-bold tracking-tight">{r.hora}</b>
-      <div className="min-w-0 flex-1">
-        <b className="block text-sm font-semibold">
+    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3 last:border-none", terminal && "opacity-45")}>
+      <b className="w-14 shrink-0 font-display text-lg font-bold tracking-tight">{r.hora}</b>
+      <div className="min-w-44 flex-1">
+        <b
+          className="block truncate text-sm font-semibold"
+          title={r.notas ? `${r.nombre} · ${r.notas}` : r.nombre}
+        >
           {r.nombre}
           {r.notas && <span className="ml-2 font-normal text-ink-soft">· {r.notas}</span>}
         </b>
@@ -276,14 +279,15 @@ function FilaReserva({
             <Users className="size-3" /> {r.comensales}
           </span>
           {r.telefono && (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 whitespace-nowrap">
               <Phone className="size-3" /> {r.telefono}
             </span>
           )}
-          {r.zonaPreferida && <span>prefiere {r.zonaPreferida}</span>}
+          {r.zonaPreferida && <span className="whitespace-nowrap">prefiere {r.zonaPreferida}</span>}
         </small>
       </div>
 
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
       {!terminal && (
         <span className="flex items-center gap-1.5">
           <select
@@ -357,6 +361,7 @@ function FilaReserva({
           Recuperar
         </button>
       )}
+      </div>
     </div>
   );
 }
