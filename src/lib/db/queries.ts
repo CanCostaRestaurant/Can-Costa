@@ -3,7 +3,7 @@
 // - Con BD pero caída o colgada (p. ej. incidencia de Supabase) → plazo duro
 //   de 8s por consulta (conPlazo) + estados VACÍOS y console.error: la app
 //   degrada con elegancia en vez de devolver un 500 o colgarse minutos.
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, max, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, max, sum } from "drizzle-orm";
 import { conPlazo, getDb, resetDb, schema } from "./index";
 import {
   COMPRAS_SEMANA,
@@ -695,5 +695,337 @@ export async function getPlatoDetalle(id: string): Promise<PlatoDetalle | null> 
   } catch (e) {
     logFallo("getPlatoDetalle", e);
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------
+// TPV: mapa de mesas, ticket y desglose de ventas del día
+// ---------------------------------------------------------------------
+
+export type MesaEstado = {
+  id: string;
+  nombre: string;
+  zona: "sala" | "terraza" | "barra";
+  capacidad: number;
+  activo: boolean;
+  ticket: { id: string; total: number; comensales: number | null; minutos: number } | null;
+};
+
+export type MapaMesasTpv = {
+  zonas: { zona: string; titulo: string; mesas: MesaEstado[] }[];
+  paraLlevar: { id: string; total: number; minutos: number }[];
+};
+
+const TITULOS_ZONA: Record<string, string> = { sala: "Sala", terraza: "Terraza", barra: "Barra" };
+
+function minutosDesde(fecha: Date): number {
+  return Math.max(0, Math.round((Date.now() - fecha.getTime()) / 60_000));
+}
+
+export async function getMapaMesas(): Promise<MapaMesasTpv> {
+  const db = getDb();
+  const vacio: MapaMesasTpv = { zonas: [], paraLlevar: [] };
+  if (!db) return vacio;
+
+  try {
+    return await conPlazo(
+      (async (): Promise<MapaMesasTpv> => {
+        const [filasMesas, abiertos, sumas] = await Promise.all([
+          db.select().from(schema.mesas).where(eq(schema.mesas.activo, true)).orderBy(asc(schema.mesas.orden)),
+          db.select().from(schema.tickets).where(eq(schema.tickets.estado, "abierto")),
+          db
+            .select({ ticketId: schema.ticketLineas.ticketId, suma: sum(schema.ticketLineas.total) })
+            .from(schema.ticketLineas)
+            .groupBy(schema.ticketLineas.ticketId),
+        ]);
+
+        const sumaPorTicket = new Map(sumas.map((s) => [s.ticketId, s.suma ? Number(s.suma) : 0]));
+        const abiertoPorMesa = new Map(abiertos.filter((t) => t.mesaId).map((t) => [t.mesaId!, t]));
+
+        const zonas = ["sala", "terraza", "barra"]
+          .map((zona) => ({
+            zona,
+            titulo: TITULOS_ZONA[zona] ?? zona,
+            mesas: filasMesas
+              .filter((m) => m.zona === zona)
+              .map((m): MesaEstado => {
+                const t = abiertoPorMesa.get(m.id);
+                return {
+                  id: m.id,
+                  nombre: m.nombre,
+                  zona: m.zona,
+                  capacidad: m.capacidad,
+                  activo: m.activo,
+                  ticket: t
+                    ? {
+                        id: t.id,
+                        total: sumaPorTicket.get(t.id) ?? 0,
+                        comensales: t.comensales,
+                        minutos: minutosDesde(t.abiertoAt),
+                      }
+                    : null,
+                };
+              }),
+          }))
+          .filter((z) => z.mesas.length > 0);
+
+        const paraLlevar = abiertos
+          .filter((t) => !t.mesaId)
+          .map((t) => ({ id: t.id, total: sumaPorTicket.get(t.id) ?? 0, minutos: minutosDesde(t.abiertoAt) }));
+
+        return { zonas, paraLlevar };
+      })(),
+    );
+  } catch (e) {
+    logFallo("getMapaMesas", e);
+    return vacio;
+  }
+}
+
+export type LineaTicket = {
+  id: string;
+  platoId: string | null;
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  total: number;
+};
+
+export type TicketDetalle = {
+  id: string;
+  mesaId: string | null;
+  mesaNombre: string;
+  estado: string;
+  comensales: number | null;
+  minutos: number;
+  total: number;
+  lineas: LineaTicket[];
+};
+
+export async function getTicketDetalle(id: string): Promise<TicketDetalle | null> {
+  const db = getDb();
+  if (!db) return null;
+
+  try {
+    return await conPlazo(
+      (async (): Promise<TicketDetalle | null> => {
+        const [fila] = await db
+          .select({ ticket: schema.tickets, mesaNombre: schema.mesas.nombre })
+          .from(schema.tickets)
+          .leftJoin(schema.mesas, eq(schema.tickets.mesaId, schema.mesas.id))
+          .where(eq(schema.tickets.id, id));
+        if (!fila) return null;
+
+        const lineas = await db
+          .select()
+          .from(schema.ticketLineas)
+          .where(eq(schema.ticketLineas.ticketId, id))
+          .orderBy(asc(schema.ticketLineas.createdAt));
+
+        const lineasMap: LineaTicket[] = lineas.map((l) => ({
+          id: l.id,
+          platoId: l.platoId,
+          descripcion: l.descripcion,
+          cantidad: l.cantidad,
+          precioUnitario: Number(l.precioUnitario),
+          total: Number(l.total),
+        }));
+
+        return {
+          id: fila.ticket.id,
+          mesaId: fila.ticket.mesaId,
+          mesaNombre: fila.mesaNombre ?? "Para llevar",
+          estado: fila.ticket.estado,
+          comensales: fila.ticket.comensales,
+          minutos: minutosDesde(fila.ticket.abiertoAt),
+          total: lineasMap.reduce((acc, l) => acc + l.total, 0),
+          lineas: lineasMap,
+        };
+      })(),
+    );
+  } catch (e) {
+    logFallo("getTicketDetalle", e);
+    return null;
+  }
+}
+
+export type PlatoTpv = { id: string; nombre: string; emoji: string; pvp: number | null };
+
+export async function getPlatosTpv(): Promise<PlatoTpv[]> {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    return await conPlazo(
+      (async (): Promise<PlatoTpv[]> => {
+        const filas = await db
+          .select()
+          .from(schema.platos)
+          .where(eq(schema.platos.activo, true))
+          .orderBy(asc(schema.platos.nombre));
+        return filas.map((p) => ({
+          id: p.id,
+          nombre: p.nombre,
+          emoji: p.emoji,
+          pvp: p.pvp !== null ? Number(p.pvp) : null,
+        }));
+      })(),
+    );
+  } catch (e) {
+    logFallo("getPlatosTpv", e);
+    return [];
+  }
+}
+
+export type DesgloseDia = {
+  fecha: string;
+  totalDia: number;
+  numTickets: number;
+  ticketMedio: number | null;
+  comensales: number;
+  efectivo: number;
+  tarjeta: number;
+  tickets: {
+    id: string;
+    hora: string;
+    mesa: string;
+    comensales: number | null;
+    metodo: string | null;
+    total: number;
+    numLineas: number;
+  }[];
+  platos: { nombre: string; emoji: string | null; unidades: number; importe: number; margen: number | null }[];
+  extras: { descripcion: string; unidades: number; importe: number }[];
+  ventaManual: number | null; // ventas_dia cuando no hay tickets (registro a mano)
+};
+
+export async function getDesgloseDia(fecha: string): Promise<DesgloseDia> {
+  const vacio: DesgloseDia = {
+    fecha,
+    totalDia: 0,
+    numTickets: 0,
+    ticketMedio: null,
+    comensales: 0,
+    efectivo: 0,
+    tarjeta: 0,
+    tickets: [],
+    platos: [],
+    extras: [],
+    ventaManual: null,
+  };
+  const db = getDb();
+  if (!db) return vacio;
+
+  try {
+    return await conPlazo(
+      (async (): Promise<DesgloseDia> => {
+        const desde = new Date(fecha + "T00:00:00Z");
+        const hasta = new Date(desde.getTime() + 86_400_000);
+
+        const cobrados = await db
+          .select({ ticket: schema.tickets, mesaNombre: schema.mesas.nombre })
+          .from(schema.tickets)
+          .leftJoin(schema.mesas, eq(schema.tickets.mesaId, schema.mesas.id))
+          .where(
+            and(
+              eq(schema.tickets.estado, "cobrado"),
+              gte(schema.tickets.cobradoAt, desde),
+              lt(schema.tickets.cobradoAt, hasta),
+            ),
+          )
+          .orderBy(asc(schema.tickets.cobradoAt));
+
+        if (cobrados.length === 0) {
+          const [venta] = await db.select().from(schema.ventasDia).where(eq(schema.ventasDia.fecha, fecha));
+          return { ...vacio, ventaManual: venta ? Number(venta.total) : null };
+        }
+
+        const ids = cobrados.map((c) => c.ticket.id);
+        const [lineas, costes] = await Promise.all([
+          db
+            .select({
+              ticketId: schema.ticketLineas.ticketId,
+              platoId: schema.ticketLineas.platoId,
+              descripcion: schema.ticketLineas.descripcion,
+              cantidad: schema.ticketLineas.cantidad,
+              total: schema.ticketLineas.total,
+              emoji: schema.platos.emoji,
+            })
+            .from(schema.ticketLineas)
+            .leftJoin(schema.platos, eq(schema.ticketLineas.platoId, schema.platos.id))
+            .where(inArray(schema.ticketLineas.ticketId, ids)),
+          getPlatosResumen(),
+        ]);
+
+        const costePorPlato = new Map(costes.map((p) => [p.id, p.coste]));
+        const lineasPorTicket = new Map<string, number>();
+        const porPlato = new Map<
+          string,
+          { nombre: string; emoji: string | null; unidades: number; importe: number; margen: number | null }
+        >();
+        const porExtra = new Map<string, { descripcion: string; unidades: number; importe: number }>();
+
+        for (const l of lineas) {
+          lineasPorTicket.set(l.ticketId, (lineasPorTicket.get(l.ticketId) ?? 0) + l.cantidad);
+          if (l.platoId) {
+            const acc = porPlato.get(l.platoId) ?? {
+              nombre: l.descripcion,
+              emoji: l.emoji,
+              unidades: 0,
+              importe: 0,
+              margen: null,
+            };
+            acc.unidades += l.cantidad;
+            acc.importe += Number(l.total);
+            const coste = costePorPlato.get(l.platoId);
+            acc.margen = coste !== undefined ? acc.importe - coste * acc.unidades : null;
+            porPlato.set(l.platoId, acc);
+          } else {
+            const clave = l.descripcion;
+            const acc = porExtra.get(clave) ?? { descripcion: clave, unidades: 0, importe: 0 };
+            acc.unidades += l.cantidad;
+            acc.importe += Number(l.total);
+            porExtra.set(clave, acc);
+          }
+        }
+
+        const horaMadrid = new Intl.DateTimeFormat("es-ES", {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "Europe/Madrid",
+        });
+
+        const ticketsDia = cobrados.map((c) => ({
+          id: c.ticket.id,
+          hora: horaMadrid.format(c.ticket.cobradoAt!),
+          mesa: c.mesaNombre ?? "Para llevar",
+          comensales: c.ticket.comensales,
+          metodo: c.ticket.metodoPago,
+          total: c.ticket.total ? Number(c.ticket.total) : 0,
+          numLineas: lineasPorTicket.get(c.ticket.id) ?? 0,
+        }));
+
+        const totalDia = ticketsDia.reduce((acc, t) => acc + t.total, 0);
+        const efectivo = ticketsDia.filter((t) => t.metodo === "efectivo").reduce((a, t) => a + t.total, 0);
+        const comensales = ticketsDia.reduce((a, t) => a + (t.comensales ?? 0), 0);
+
+        return {
+          fecha,
+          totalDia,
+          numTickets: ticketsDia.length,
+          ticketMedio: ticketsDia.length ? totalDia / ticketsDia.length : null,
+          comensales,
+          efectivo,
+          tarjeta: totalDia - efectivo,
+          tickets: ticketsDia,
+          platos: [...porPlato.values()].sort((a, b) => b.importe - a.importe),
+          extras: [...porExtra.values()].sort((a, b) => b.importe - a.importe),
+          ventaManual: null,
+        };
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getDesgloseDia", e);
+    return vacio;
   }
 }

@@ -1,18 +1,13 @@
-import { PageHead } from "@/components/ui";
-import { getVentas } from "@/lib/db/queries";
+import { getDesgloseDia, getVentas } from "@/lib/db/queries";
 import { VentasClient } from "./ventas-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function VentasPage() {
-  const ventas = await getVentas();
-  return (
-    <section className="anim-in">
-      <PageHead
-        titulo="Ventas"
-        subtitulo="La facturación de sala, día a día · pronto se importará sola del TPV"
-      />
-      <VentasClient ventas={ventas} />
-    </section>
-  );
+export default async function VentasPage({ searchParams }: { searchParams: Promise<{ dia?: string }> }) {
+  const { dia } = await searchParams;
+  const hoy = new Date().toISOString().slice(0, 10);
+  const fecha = dia && /^\d{4}-\d{2}-\d{2}$/.test(dia) ? dia : hoy;
+
+  const [desglose, historico] = await Promise.all([getDesgloseDia(fecha), getVentas(35)]);
+  return <VentasClient desglose={desglose} historico={historico} hoy={hoy} />;
 }

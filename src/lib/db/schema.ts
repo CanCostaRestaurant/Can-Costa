@@ -202,6 +202,60 @@ export const platoIngredientes = pgTable(
 );
 
 // ---------------------------------------------------------------------
+// TPV: mesas, tickets y líneas de venta
+// ---------------------------------------------------------------------
+
+export const mesaZonaEnum = pgEnum("mesa_zona", ["sala", "terraza", "barra"]);
+
+// La capacidad deja la distribución lista para el futuro módulo de RESERVAS
+// (cover manager): asignar la mejor mesa a una reserva de N comensales.
+export const mesas = pgTable("mesas", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nombre: text("nombre").notNull(), // "Mesa 1", "Barra 2"…
+  zona: mesaZonaEnum("zona").notNull().default("sala"),
+  capacidad: integer("capacidad").notNull().default(4),
+  orden: integer("orden"),
+  activo: boolean("activo").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const ticketEstadoEnum = pgEnum("ticket_estado", ["abierto", "cobrado", "anulado"]);
+export const metodoPagoEnum = pgEnum("metodo_pago", ["efectivo", "tarjeta"]);
+
+export const tickets = pgTable(
+  "tickets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    mesaId: uuid("mesa_id").references(() => mesas.id, { onDelete: "set null" }), // null = para llevar
+    estado: ticketEstadoEnum("estado").notNull().default("abierto"),
+    comensales: integer("comensales"),
+    metodoPago: metodoPagoEnum("metodo_pago"), // se fija al cobrar
+    total: numeric("total", { precision: 12, scale: 2 }), // se fija al cobrar
+    abiertoAt: timestamp("abierto_at", { withTimezone: true }).notNull().defaultNow(),
+    cobradoAt: timestamp("cobrado_at", { withTimezone: true }),
+  },
+  (t) => [index("tickets_estado_idx").on(t.estado), index("tickets_cobrado_idx").on(t.cobradoAt)],
+);
+
+// Cada línea congela descripción y PVP del momento de la comanda.
+export const ticketLineas = pgTable(
+  "ticket_lineas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticketId: uuid("ticket_id")
+      .notNull()
+      .references(() => tickets.id, { onDelete: "cascade" }),
+    platoId: uuid("plato_id").references(() => platos.id, { onDelete: "set null" }), // null = línea libre (bebida, extra…)
+    descripcion: text("descripcion").notNull(),
+    cantidad: integer("cantidad").notNull().default(1),
+    precioUnitario: numeric("precio_unitario", { precision: 12, scale: 2 }).notNull(),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ticket_lineas_ticket_idx").on(t.ticketId)],
+);
+
+// ---------------------------------------------------------------------
 // precios  (histórico: un punto por compra de un producto)
 // ---------------------------------------------------------------------
 
