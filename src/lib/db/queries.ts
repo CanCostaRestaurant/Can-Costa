@@ -1938,12 +1938,19 @@ export async function getConciliacion(): Promise<Conciliacion> {
             let sugerencia: FacturaConc["sugerencia"] = null;
             if (hijos.length === 0 && f.proveedorId) {
               const candidatos = sueltos.filter((a) => a.proveedorId === f.proveedorId);
-              if (candidatos.length) {
-                const sumaTodos = candidatos.reduce((s, a) => s + a.total, 0);
+              // La factura consolida lo entregado HASTA su fecha: se prueba
+              // primero con todos los sueltos y después solo con los previos.
+              const previos = f.fecha ? candidatos.filter((a) => a.fechaISO && a.fechaISO <= f.fecha!) : [];
+              for (const grupo of [candidatos, previos]) {
+                if (!grupo.length || sugerencia) continue;
+                const suma = grupo.reduce((s, a) => s + a.total, 0);
+                if (Math.abs(suma - total) <= tolerancia) {
+                  sugerencia = { albaranIds: grupo.map((a) => a.id), suma, diferencia: suma - total };
+                }
+              }
+              if (!sugerencia) {
                 const unoExacto = candidatos.find((a) => Math.abs(a.total - total) <= tolerancia);
-                if (Math.abs(sumaTodos - total) <= tolerancia) {
-                  sugerencia = { albaranIds: candidatos.map((a) => a.id), suma: sumaTodos, diferencia: sumaTodos - total };
-                } else if (unoExacto) {
+                if (unoExacto) {
                   sugerencia = { albaranIds: [unoExacto.id], suma: unoExacto.total, diferencia: unoExacto.total - total };
                 }
               }
