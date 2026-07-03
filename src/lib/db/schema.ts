@@ -65,6 +65,7 @@ export const gastoCategoriaEnum = pgEnum("gasto_categoria", [
   "gestoria",
   "alquiler",
   "suministros",
+  "personal",
   "otros",
 ]);
 
@@ -140,6 +141,7 @@ export const facturas = pgTable(
     pagada: boolean("pagada").notNull().default(false),
     incidencia: text("incidencia"), // incidencia de compra registrada en el documento
     motivoRechazo: text("motivo_rechazo"), // por qué está en rechazadas (p. ej. duplicado)
+    facturaPadreId: uuid("factura_padre_id"), // conciliación: albarán → factura que lo engloba (FK a esta misma tabla, sin ref circular en Drizzle)
     documentoUrl: text("documento_url"), // fichero en Supabase Storage
     datosIa: jsonb("datos_ia"), // respuesta cruda de la extracción, para depurar
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -149,6 +151,23 @@ export const facturas = pgTable(
     index("facturas_estado_idx").on(t.estado),
     index("facturas_fecha_idx").on(t.fecha),
   ],
+);
+
+// ---------------------------------------------------------------------
+// personal_gastos  (gastos de personal por mes: nóminas, SS…; suman al
+// dashboard en la categoría "personal", como en haddock)
+// ---------------------------------------------------------------------
+
+export const personalGastos = pgTable(
+  "personal_gastos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    mes: text("mes").notNull(), // "YYYY-MM"
+    concepto: text("concepto").notNull(), // "Nómina Marc", "Seguridad Social"…
+    importe: numeric("importe", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("personal_gastos_mes_idx").on(t.mes)],
 );
 
 // ---------------------------------------------------------------------

@@ -12,6 +12,7 @@ export type CategoriaGasto =
   | "gestoria"
   | "alquiler"
   | "suministros"
+  | "personal"
   | "otros";
 
 export const ETIQUETA_CATEGORIA: Record<CategoriaGasto, string> = {
@@ -22,6 +23,7 @@ export const ETIQUETA_CATEGORIA: Record<CategoriaGasto, string> = {
   gestoria: "Gestoría",
   alquiler: "Alquiler",
   suministros: "Suministros",
+  personal: "Personal",
   otros: "Otros",
 };
 
@@ -62,6 +64,8 @@ export type Factura = {
   pagada?: boolean;
   incidencia?: string | null;
   motivoRechazo?: string | null;
+  facturaPadreId?: string | null; // albarán conciliado → factura que lo engloba
+  numAlbaranes?: number; // factura → albaranes conciliados con ella
   lineasDetalle?: LineaFactura[];
   lineasOcultas?: number;
 };

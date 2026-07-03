@@ -1,11 +1,19 @@
-import { EnConstruccion } from "@/components/en-construccion";
+import { getPersonalMes } from "@/lib/db/queries";
+import { PersonalClient } from "./personal-client";
 
-export default function PersonalPage() {
-  return (
-    <EnConstruccion
-      titulo="Personal"
-      subtitulo="Nóminas y coste de equipo sobre las ventas"
-      descripcion="Subirás las nóminas y verás el coste de personal como porcentaje de las ventas, junto al food cost. Es el segundo gran coste del restaurante y se montará clonando el módulo de equipo que ya funciona en JOMA."
-    />
-  );
+export const dynamic = "force-dynamic";
+
+function mesActualMadrid(): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Madrid" }).format(new Date()).slice(0, 7);
+}
+
+export default async function PersonalPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mes?: string }>;
+}) {
+  const { mes } = await searchParams;
+  const elegido = mes && /^\d{4}-\d{2}$/.test(mes) ? mes : mesActualMadrid();
+  const datos = await getPersonalMes(elegido);
+  return <PersonalClient datos={datos} />;
 }

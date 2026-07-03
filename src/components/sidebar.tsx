@@ -66,8 +66,8 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
     titulo: "Gastos",
     items: [
       { href: "/documentos", label: "Documentos", icon: ReceiptText },
-      { href: "/conciliacion", label: "Conciliación", icon: Scale, chip: "pronto" },
-      { href: "/personal", label: "Personal", icon: Users, chip: "pronto" },
+      { href: "/conciliacion", label: "Conciliación", icon: Scale, chip: "nuevo" },
+      { href: "/personal", label: "Personal", icon: Users, chip: "nuevo" },
     ],
   },
   {

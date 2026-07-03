@@ -13,6 +13,7 @@ const CATEGORIAS_GASTO = [
   "gestoria",
   "alquiler",
   "suministros",
+  "personal",
   "otros",
 ] as const;
 type CategoriaGasto = (typeof CATEGORIAS_GASTO)[number];

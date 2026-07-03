@@ -211,6 +211,7 @@ export async function getFacturas(): Promise<Factura[]> {
             pagada: schema.facturas.pagada,
             incidencia: schema.facturas.incidencia,
             motivoRechazo: schema.facturas.motivoRechazo,
+            facturaPadreId: schema.facturas.facturaPadreId,
             proveedor: schema.proveedores.nombre,
             proveedorTexto: schema.facturas.proveedorTexto,
             categoriaProveedor: schema.proveedores.categoria,
@@ -293,6 +294,8 @@ export async function getFacturas(): Promise<Factura[]> {
           pagada: f.pagada,
           incidencia: f.incidencia,
           motivoRechazo: f.motivoRechazo,
+          facturaPadreId: f.facturaPadreId,
+          numAlbaranes: filas.filter((x) => x.facturaPadreId === f.id).length,
           lineasDetalle: detalles.get(f.id),
         }));
       })(),
@@ -1627,7 +1630,7 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
     return await conPlazo(
       (async (): Promise<DashboardMes> => {
         const ajustes = await getAjustes();
-        const [facturasMes, ventasMes, ticketsMes, pendientes] = await Promise.all([
+        const [facturasMes, conAlbaranes, personalMes, ventasMes, ticketsMes, pendientes] = await Promise.all([
           db
             .select({
               id: schema.facturas.id,
@@ -1651,6 +1654,13 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
                 lt(schema.facturas.fecha, fin),
               ),
             ),
+          // Facturas con albaranes conciliados: en "a tiempo real" mandan
+          // sus albaranes y la factura se aparta (no duplicar importe).
+          db
+            .select({ padreId: schema.facturas.facturaPadreId })
+            .from(schema.facturas)
+            .where(isNotNull(schema.facturas.facturaPadreId)),
+          db.select().from(schema.personalGastos).where(eq(schema.personalGastos.mes, mes)),
           db
             .select({ fecha: schema.ventasDia.fecha, total: schema.ventasDia.total })
             .from(schema.ventasDia)
@@ -1697,8 +1707,13 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
         };
         const porCategoria = new Map<CategoriaGasto, AccCategoria>();
 
+        const padresConciliados = new Set(conAlbaranes.map((c) => c.padreId));
+
         let gastos = 0;
         for (const f of facturasMes) {
+          // En "a tiempo real" una factura ya conciliada con albaranes se
+          // aparta: cuentan sus albaranes (evita duplicar el importe).
+          if (modo === "real" && f.tipo === "factura" && padresConciliados.has(f.id)) continue;
           const importe = importeGasto(f);
           gastos += importe;
           if (f.fecha) {
@@ -1722,6 +1737,30 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
             total: importe,
           });
           porCategoria.set(categoria, acc);
+        }
+
+        // Gastos de personal del mes (nóminas, SS…): suman al total y a su
+        // categoría; no van a las barras diarias porque son mensuales.
+        if (personalMes.length) {
+          const acc: AccCategoria = porCategoria.get("personal") ?? {
+            importe: 0,
+            proveedores: new Map<string, number>(),
+            documentos: [],
+          };
+          for (const p of personalMes) {
+            const importe = Number(p.importe);
+            gastos += importe;
+            acc.importe += importe;
+            acc.proveedores.set(p.concepto, (acc.proveedores.get(p.concepto) ?? 0) + importe);
+            acc.documentos.push({
+              id: p.id,
+              proveedor: p.concepto,
+              fecha: "mensual",
+              tipo: "personal",
+              total: importe,
+            });
+          }
+          porCategoria.set("personal", acc);
         }
 
         let ventas = 0;
@@ -1811,5 +1850,155 @@ export async function getUsuarios(): Promise<UsuarioFila[]> {
   } catch (e) {
     logFallo("getUsuarios", e);
     return [];
+  }
+}
+
+// ---------------------------------------------------------------------
+// Conciliacion: cruzar albaranes con su factura (tolerancia en Ajustes)
+// ---------------------------------------------------------------------
+
+export type AlbaranConc = {
+  id: string;
+  numero: string | null;
+  fecha: string; // legible
+  fechaISO: string | null;
+  total: number;
+  proveedor: string;
+  proveedorId: string | null;
+};
+
+export type FacturaConc = {
+  id: string;
+  numero: string | null;
+  fecha: string;
+  total: number;
+  proveedor: string;
+  proveedorId: string | null;
+  incidencia: string | null;
+  albaranes: AlbaranConc[]; // ya conciliados con ella
+  sugerencia: { albaranIds: string[]; suma: number; diferencia: number } | null;
+};
+
+export type Conciliacion = {
+  tolerancia: number;
+  facturas: FacturaConc[];
+  albaranesSueltos: AlbaranConc[];
+};
+
+export async function getConciliacion(): Promise<Conciliacion> {
+  const db = getDb();
+  if (!db) return { tolerancia: 1, facturas: [], albaranesSueltos: [] };
+
+  try {
+    return await conPlazo(
+      (async (): Promise<Conciliacion> => {
+        const [ajustes, docs] = await Promise.all([
+          getAjustes(),
+          db
+            .select({
+              id: schema.facturas.id,
+              numero: schema.facturas.numero,
+              fecha: schema.facturas.fecha,
+              total: schema.facturas.total,
+              tipo: schema.facturas.tipo,
+              proveedorId: schema.facturas.proveedorId,
+              facturaPadreId: schema.facturas.facturaPadreId,
+              incidencia: schema.facturas.incidencia,
+              proveedor: schema.proveedores.nombre,
+              proveedorTexto: schema.facturas.proveedorTexto,
+            })
+            .from(schema.facturas)
+            .leftJoin(schema.proveedores, eq(schema.facturas.proveedorId, schema.proveedores.id))
+            .where(and(inArray(schema.facturas.estado, ["validada", "revisar"]), isNotNull(schema.facturas.total)))
+            .orderBy(desc(schema.facturas.fecha)),
+        ]);
+
+        const aAlbaran = (d: (typeof docs)[number]): AlbaranConc => ({
+          id: d.id,
+          numero: d.numero,
+          fecha: fechaLegible(d.fecha),
+          fechaISO: d.fecha,
+          total: Number(d.total ?? 0),
+          proveedor: d.proveedor ?? d.proveedorTexto ?? "Sin proveedor",
+          proveedorId: d.proveedorId,
+        });
+
+        const albaranes = docs.filter((d) => d.tipo === "albaran");
+        const sueltos = albaranes.filter((a) => !a.facturaPadreId).map(aAlbaran);
+        const tolerancia = ajustes.toleranciaConciliacion;
+
+        const facturas: FacturaConc[] = docs
+          .filter((d) => d.tipo === "factura")
+          .map((f) => {
+            const hijos = albaranes.filter((a) => a.facturaPadreId === f.id).map(aAlbaran);
+            const total = Number(f.total ?? 0);
+
+            // Conciliacion recomendada: albaranes sueltos del mismo proveedor
+            // cuya suma cuadra con la factura (o uno solo que cuadre).
+            let sugerencia: FacturaConc["sugerencia"] = null;
+            if (hijos.length === 0 && f.proveedorId) {
+              const candidatos = sueltos.filter((a) => a.proveedorId === f.proveedorId);
+              if (candidatos.length) {
+                const sumaTodos = candidatos.reduce((s, a) => s + a.total, 0);
+                const unoExacto = candidatos.find((a) => Math.abs(a.total - total) <= tolerancia);
+                if (Math.abs(sumaTodos - total) <= tolerancia) {
+                  sugerencia = { albaranIds: candidatos.map((a) => a.id), suma: sumaTodos, diferencia: sumaTodos - total };
+                } else if (unoExacto) {
+                  sugerencia = { albaranIds: [unoExacto.id], suma: unoExacto.total, diferencia: unoExacto.total - total };
+                }
+              }
+            }
+
+            return {
+              id: f.id,
+              numero: f.numero,
+              fecha: fechaLegible(f.fecha),
+              total,
+              proveedor: f.proveedor ?? f.proveedorTexto ?? "Sin proveedor",
+              proveedorId: f.proveedorId,
+              incidencia: f.incidencia,
+              albaranes: hijos,
+              sugerencia,
+            };
+          });
+
+        return { tolerancia, facturas, albaranesSueltos: sueltos };
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getConciliacion", e);
+    return { tolerancia: 1, facturas: [], albaranesSueltos: [] };
+  }
+}
+
+// ---------------------------------------------------------------------
+// Personal: gastos de personal por mes (suman al dashboard)
+// ---------------------------------------------------------------------
+
+export type PersonalMes = {
+  mes: string;
+  gastos: { id: string; concepto: string; importe: number }[];
+  total: number;
+};
+
+export async function getPersonalMes(mes: string): Promise<PersonalMes> {
+  const db = getDb();
+  if (!db || !/^\d{4}-\d{2}$/.test(mes)) return { mes, gastos: [], total: 0 };
+  try {
+    return await conPlazo(
+      (async (): Promise<PersonalMes> => {
+        const filas = await db
+          .select()
+          .from(schema.personalGastos)
+          .where(eq(schema.personalGastos.mes, mes))
+          .orderBy(asc(schema.personalGastos.createdAt));
+        const gastos = filas.map((f) => ({ id: f.id, concepto: f.concepto, importe: Number(f.importe) }));
+        return { mes, gastos, total: gastos.reduce((a, g) => a + g.importe, 0) };
+      })(),
+    );
+  } catch (e) {
+    logFallo("getPersonalMes", e);
+    return { mes, gastos: [], total: 0 };
   }
 }

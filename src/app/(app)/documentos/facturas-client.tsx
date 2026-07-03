@@ -49,6 +49,7 @@ export function FacturasClient({
   const [fTipo, setFTipo] = useState("");
   const [fCat, setFCat] = useState("");
   const [fProv, setFProv] = useState("");
+  const [fCon, setFCon] = useState(""); // "" | "si" | "no"
   const [orden, setOrden] = useState<Orden>("fecha");
   const [abiertaId, setAbiertaId] = useState<string | null>(null);
   const [validando, startValidar] = useTransition();
@@ -95,20 +96,24 @@ export function FacturasClient({
     [facturas],
   );
 
-  const hayFiltrosFinos = Boolean(fMes || fTipo || fCat || fProv);
+  const hayFiltrosFinos = Boolean(fMes || fTipo || fCat || fProv || fCon);
   const visibles = useMemo(() => {
     let lista = facturas.filter((f) => (filtro === "todas" ? f.estado !== "rechazada" : f.estado === filtro));
     if (fMes) lista = lista.filter((f) => f.fechaISO?.startsWith(fMes));
     if (fTipo) lista = lista.filter((f) => f.tipo === fTipo);
     if (fCat) lista = lista.filter((f) => f.categoriaEfectiva === fCat);
     if (fProv) lista = lista.filter((f) => f.proveedor === fProv);
+    if (fCon) {
+      const conciliado = (f: Factura) => Boolean(f.facturaPadreId) || (f.numAlbaranes ?? 0) > 0;
+      lista = lista.filter((f) => (fCon === "si" ? conciliado(f) : !conciliado(f)));
+    }
     if (orden !== "fecha") {
       lista = [...lista].sort((a, b) =>
         orden === "importe-desc" ? (b.total ?? -1) - (a.total ?? -1) : (a.total ?? Infinity) - (b.total ?? Infinity),
       );
     }
     return lista;
-  }, [facturas, filtro, fMes, fTipo, fCat, fProv, orden]);
+  }, [facturas, filtro, fMes, fTipo, fCat, fProv, fCon, orden]);
 
   // Resumen del filtro (como haddock: N documentos, total y por proveedor).
   const resumen = useMemo(() => {
@@ -144,6 +149,7 @@ export function FacturasClient({
     setFTipo("");
     setFCat("");
     setFProv("");
+    setFCon("");
     setOrden("fecha");
   }
 
@@ -264,6 +270,10 @@ export function FacturasClient({
               </option>
             ))}
           </SelectFiltro>
+          <SelectFiltro valor={fCon} onCambio={setFCon} placeholder="Conciliación">
+            <option value="si">Conciliados</option>
+            <option value="no">Sin conciliar</option>
+          </SelectFiltro>
           <SelectFiltro
             valor={orden === "fecha" ? "" : orden}
             onCambio={(v) => setOrden((v || "fecha") as Orden)}
@@ -331,6 +341,18 @@ export function FacturasClient({
                       {f.incidencia && (
                         <span title={`Incidencia: ${f.incidencia}`}>
                           <AlertTriangle className="size-3.5 text-warn" />
+                        </span>
+                      )}
+                      {(f.facturaPadreId || (f.numAlbaranes ?? 0) > 0) && (
+                        <span
+                          title={
+                            f.facturaPadreId
+                              ? "Albarán conciliado con su factura"
+                              : `Factura conciliada con ${f.numAlbaranes} albaranes`
+                          }
+                          className="rounded-full bg-good-soft px-1.5 py-0.5 text-[10px] font-bold text-good"
+                        >
+                          conciliado
                         </span>
                       )}
                     </span>
