@@ -30,6 +30,7 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
   // Formulario nueva reserva
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
+  const [email, setEmail] = useState("");
   const [hora, setHora] = useState("21:00");
   const [pax, setPax] = useState("2");
   const [zona, setZona] = useState<string>("");
@@ -157,6 +158,13 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
               onChange={(e) => setTelefono(e.target.value)}
               className="rounded-xl border border-line bg-card px-3.5 py-2.5 text-[14.5px] outline-none focus:border-brand"
             />
+            <input
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="rounded-xl border border-line bg-card px-3.5 py-2.5 text-[14.5px] outline-none focus:border-brand"
+            />
             <div className="flex gap-2">
               <label className="flex-1 text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
                 Hora
@@ -206,6 +214,7 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
                     crearReserva({
                       nombre,
                       telefono,
+                      email,
                       fecha: datos.fecha,
                       hora,
                       comensales: parseInt(pax, 10),
@@ -213,13 +222,15 @@ export function ReservasClient({ datos, hoy }: { datos: DiaReservas; hoy: string
                       notas,
                     }),
                   (r) => {
-                    const x = r as { mesaNombre?: string | null; motivo?: string };
+                    const x = r as { mesaNombre?: string | null; motivo?: string; cliente?: string | null };
                     setNombre("");
                     setTelefono("");
+                    setEmail("");
                     setNotas("");
-                    return x.mesaNombre
+                    const base = x.mesaNombre
                       ? `Asignada ${x.mesaNombre} — ${x.motivo}`
                       : `Reserva creada SIN MESA — ${x.motivo}`;
+                    return x.cliente ? `${base} · ${x.cliente}` : base;
                   },
                 )
               }

@@ -50,6 +50,13 @@
       "when": 1783064137726,
       "tag": "0006_slow_the_anarchist",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783064719717,
+      "tag": "0007_third_sprite",
+      "breakpoints": true
     }
   ]
 }

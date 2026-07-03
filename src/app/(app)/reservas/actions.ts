@@ -11,6 +11,7 @@ import {
   type Ocupacion,
 } from "@/lib/reservas/asignador";
 import { CONFIG_RESERVAS } from "@/lib/reservas/config";
+import { buscarCoincidencia, normalizarEmail } from "@/lib/clientes/identidad";
 import { abrirTicket } from "../tpv/actions";
 
 type Resultado = { ok: boolean; error?: string; mesaNombre?: string | null; motivo?: string; ticketId?: string };
@@ -61,15 +62,61 @@ async function ocupacionesDelDia(db: Db, fecha: string, excluirId?: string): Pro
   });
 }
 
+// Encuentra (o crea) el cliente detrás de una reserva: teléfono > email >
+// nombre+apellido. Completa datos que le falten al cliente existente.
+async function vincularCliente(
+  db: Db,
+  datos: { nombre: string; telefono?: string | null; email?: string | null },
+): Promise<{ id: string; reservasPrevias: number }> {
+  const candidatos = await conPlazo(
+    db
+      .select({
+        id: schema.clientes.id,
+        nombre: schema.clientes.nombre,
+        telefono: schema.clientes.telefono,
+        email: schema.clientes.email,
+      })
+      .from(schema.clientes),
+  );
+  const coincidencia = buscarCoincidencia(datos, candidatos);
+
+  if (coincidencia) {
+    const set: Record<string, unknown> = {};
+    if (!coincidencia.telefono && datos.telefono?.trim()) set.telefono = datos.telefono.trim();
+    if (!coincidencia.email && normalizarEmail(datos.email)) set.email = datos.email!.trim().toLowerCase();
+    if (Object.keys(set).length) {
+      set.updatedAt = new Date();
+      await conPlazo(db.update(schema.clientes).set(set).where(eq(schema.clientes.id, coincidencia.id)));
+    }
+    const previas = await conPlazo(
+      db.select().from(schema.reservas).where(eq(schema.reservas.clienteId, coincidencia.id)),
+    );
+    return { id: coincidencia.id, reservasPrevias: previas.length };
+  }
+
+  const [nuevo] = await conPlazo(
+    db
+      .insert(schema.clientes)
+      .values({
+        nombre: datos.nombre.trim(),
+        telefono: datos.telefono?.trim() || null,
+        email: normalizarEmail(datos.email) ? datos.email!.trim().toLowerCase() : null,
+      })
+      .returning({ id: schema.clientes.id }),
+  );
+  return { id: nuevo.id, reservasPrevias: 0 };
+}
+
 export async function crearReserva(datos: {
   nombre: string;
   telefono?: string;
+  email?: string;
   fecha: string;
   hora: string; // "HH:MM"
   comensales: number;
   zonaPreferida?: "sala" | "terraza" | "barra" | null;
   notas?: string;
-}): Promise<Resultado> {
+}): Promise<Resultado & { cliente?: string | null }> {
   const db = getDb();
   if (!db) return SIN_BD;
   if (!datos.nombre.trim()) return { ok: false, error: "Pon el nombre de la reserva" };
@@ -94,10 +141,14 @@ export async function crearReserva(datos: {
       ocupaciones,
     );
 
+    const cliente = await vincularCliente(db, datos);
+
     await conPlazo(
       db.insert(schema.reservas).values({
         nombre: datos.nombre.trim(),
         telefono: datos.telefono?.trim() || null,
+        email: datos.email?.trim() || null,
+        clienteId: cliente.id,
         fecha: datos.fecha,
         hora: datos.hora,
         comensales: Math.round(datos.comensales),
@@ -110,6 +161,7 @@ export async function crearReserva(datos: {
     );
 
     revalidatePath("/reservas");
+    revalidatePath("/clientes");
     return {
       ok: true,
       mesaNombre: sugerencia
@@ -118,6 +170,10 @@ export async function crearReserva(datos: {
           : sugerencia.mesaNombre
         : null,
       motivo: sugerencia?.motivo ?? "sin mesa libre para esa hora — revisa o reoptimiza",
+      cliente:
+        cliente.reservasPrevias > 0
+          ? `⭐ cliente habitual — ${cliente.reservasPrevias + 1}ª reserva`
+          : null,
     };
   } catch (e) {
     return fallo("crearReserva", e);

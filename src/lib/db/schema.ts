@@ -268,6 +268,18 @@ export const ticketLineas = pgTable(
 // RESERVAS (cover manager): asignación de mesa vía lib/reservas/asignador
 // ---------------------------------------------------------------------
 
+// Clientes: se generan AUTOMÁTICAMENTE desde las reservas. La identidad se
+// resuelve en lib/clientes/identidad.ts (teléfono > email > nombre+apellido).
+export const clientes = pgTable("clientes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nombre: text("nombre").notNull(),
+  telefono: text("telefono"),
+  email: text("email"),
+  notas: text("notas"), // alergias, preferencias, VIP…
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const reservaEstadoEnum = pgEnum("reserva_estado", [
   "confirmada",
   "sentada",
@@ -281,6 +293,8 @@ export const reservas = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     nombre: text("nombre").notNull(),
     telefono: text("telefono"),
+    email: text("email"),
+    clienteId: uuid("cliente_id").references(() => clientes.id, { onDelete: "set null" }),
     comensales: integer("comensales").notNull(),
     fecha: date("fecha").notNull(),
     hora: time("hora").notNull(),

@@ -1127,3 +1127,76 @@ export async function getReservasDia(fecha: string): Promise<DiaReservas> {
     return vacio;
   }
 }
+
+// ---------------------------------------------------------------------
+// Clientes (generados automáticamente desde las reservas)
+// ---------------------------------------------------------------------
+
+export type ClienteResumen = {
+  id: string;
+  nombre: string;
+  telefono: string | null;
+  email: string | null;
+  notas: string | null;
+  numReservas: number;
+  visitas: number; // reservas sentadas (vinieron de verdad)
+  noShows: number;
+  ultimaReserva: string; // legible
+};
+
+export async function getClientes(): Promise<ClienteResumen[]> {
+  const db = getDb();
+  if (!db) return [];
+
+  try {
+    return await conPlazo(
+      (async (): Promise<ClienteResumen[]> => {
+        const [filas, reservasTodas] = await Promise.all([
+          db.select().from(schema.clientes),
+          db
+            .select({
+              clienteId: schema.reservas.clienteId,
+              estado: schema.reservas.estado,
+              fecha: schema.reservas.fecha,
+            })
+            .from(schema.reservas)
+            .where(isNotNull(schema.reservas.clienteId)),
+        ]);
+
+        const agregados = new Map<
+          string,
+          { numReservas: number; visitas: number; noShows: number; ultima: string }
+        >();
+        for (const r of reservasTodas) {
+          const acc = agregados.get(r.clienteId!) ?? { numReservas: 0, visitas: 0, noShows: 0, ultima: "" };
+          acc.numReservas += 1;
+          if (r.estado === "sentada") acc.visitas += 1;
+          if (r.estado === "no_show") acc.noShows += 1;
+          if (r.fecha > acc.ultima) acc.ultima = r.fecha;
+          agregados.set(r.clienteId!, acc);
+        }
+
+        return filas
+          .map((c): ClienteResumen => {
+            const agg = agregados.get(c.id);
+            return {
+              id: c.id,
+              nombre: c.nombre,
+              telefono: c.telefono,
+              email: c.email,
+              notas: c.notas,
+              numReservas: agg?.numReservas ?? 0,
+              visitas: agg?.visitas ?? 0,
+              noShows: agg?.noShows ?? 0,
+              ultimaReserva: agg?.ultima ? fechaLegible(agg.ultima) : "—",
+            };
+          })
+          .sort((a, b) => b.numReservas - a.numReservas || a.nombre.localeCompare(b.nombre));
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getClientes", e);
+    return [];
+  }
+}
