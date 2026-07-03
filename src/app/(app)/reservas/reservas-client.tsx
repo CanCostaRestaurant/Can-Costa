@@ -266,7 +266,7 @@ function FilaReserva({
   return (
     <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3 last:border-none", terminal && "opacity-45")}>
       <b className="w-14 shrink-0 font-display text-lg font-bold tracking-tight">{r.hora}</b>
-      <div className="min-w-44 flex-1">
+      <div className="min-w-32 flex-1">
         <b
           className="block truncate text-sm font-semibold"
           title={r.notas ? `${r.nombre} · ${r.notas}` : r.nombre}
