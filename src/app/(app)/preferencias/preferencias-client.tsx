@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, KeyRound, Plus, Trash2 } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
 import { type RolUsuario } from "@/lib/auth";
 import { type Ajustes, type UsuarioFila } from "@/lib/db/queries";
@@ -126,57 +126,23 @@ export function PreferenciasClient({ ajustes, usuarios }: { ajustes: Ajustes; us
             Usuarios <span className="font-body text-[12.5px] font-normal text-ink-soft">· hasta 7, cada uno con su contraseña</span>
           </h3>
           <p className="mt-1 mb-4 text-[12.5px] leading-relaxed text-ink-soft">
-            En el login basta la contraseña: con ella Can Costa sabe quién es y qué puede ver.
+            Cada uno entra con su usuario y su contraseña. Clica el nombre para renombrarlo y la
+            llave para cambiarle la contraseña.
           </p>
 
           <div className="flex flex-col gap-2">
             {usuarios.map((u) => (
-              <div key={u.id} className="flex items-center gap-2.5 rounded-xl border border-line px-3 py-2.5">
-                <div className="grid size-8 shrink-0 place-items-center rounded-full bg-chip text-[13px] font-bold uppercase">
-                  {u.nombre.slice(0, 1)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <b className={cn("block truncate text-[13.5px] font-semibold", !u.activo && "line-through opacity-50")}>
-                    {u.nombre}
-                  </b>
-                  <small className="text-[11.5px] text-ink-soft">desde {u.creado}</small>
-                </div>
-                <select
-                  value={u.rol}
-                  onChange={(e) => ejecutar(() => actualizarUsuario(u.id, { rol: e.target.value as RolUsuario }))}
-                  className="rounded-lg border border-line bg-card px-2 py-1 text-[12.5px] font-semibold outline-none focus:border-brand"
-                >
-                  {ROLES.map((r) => (
-                    <option key={r.valor} value={r.valor}>
-                      {r.etiqueta}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => ejecutar(() => actualizarUsuario(u.id, { activo: !u.activo }))}
-                  className="cursor-pointer"
-                  title={u.activo ? "Desactivar acceso" : "Reactivar acceso"}
-                >
-                  {u.activo ? <Chip tone="good">activo</Chip> : <Chip tone="gray">sin acceso</Chip>}
-                </button>
-                <button
-                  onClick={() => {
-                    if (borrandoId !== u.id) {
-                      setBorrandoId(u.id);
-                      setTimeout(() => setBorrandoId(null), 4000);
-                      return;
-                    }
-                    ejecutar(() => eliminarUsuario(u.id));
-                  }}
-                  title={borrandoId === u.id ? "Otra vez para borrar" : "Eliminar usuario"}
-                  className={cn(
-                    "cursor-pointer rounded-lg p-1.5 transition-colors",
-                    borrandoId === u.id ? "bg-bad text-white" : "text-ink-soft hover:bg-bad-soft hover:text-bad",
-                  )}
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </div>
+              <FilaUsuario
+                key={u.id}
+                usuario={u}
+                ocupado={ocupado}
+                borrando={borrandoId === u.id}
+                onEjecutar={ejecutar}
+                onPedirBorrado={() => {
+                  setBorrandoId(u.id);
+                  setTimeout(() => setBorrandoId(null), 4000);
+                }}
+              />
             ))}
             {usuarios.length === 0 && (
               <p className="rounded-xl bg-chip px-3.5 py-3 text-[13px] text-ink-soft">
@@ -236,6 +202,129 @@ export function PreferenciasClient({ ajustes, usuarios }: { ajustes: Ajustes; us
         </div>
       </div>
     </section>
+  );
+}
+
+function FilaUsuario({
+  usuario: u,
+  ocupado,
+  borrando,
+  onEjecutar,
+  onPedirBorrado,
+}: {
+  usuario: UsuarioFila;
+  ocupado: boolean;
+  borrando: boolean;
+  onEjecutar: (fn: () => Promise<{ ok: boolean; error?: string }>) => void;
+  onPedirBorrado: () => void;
+}) {
+  const [nombre, setNombre] = useState(u.nombre);
+  const [cambiandoPass, setCambiandoPass] = useState(false);
+  const [nuevaPass, setNuevaPass] = useState("");
+
+  return (
+    <div className="rounded-xl border border-line px-3 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <div className="grid size-8 shrink-0 place-items-center rounded-full bg-chip text-[13px] font-bold uppercase">
+          {u.nombre.slice(0, 1)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            onBlur={() => {
+              if (nombre.trim() && nombre.trim() !== u.nombre) {
+                onEjecutar(() => actualizarUsuario(u.id, { nombre }));
+              } else {
+                setNombre(u.nombre);
+              }
+            }}
+            aria-label={`Nombre de ${u.nombre}`}
+            className={cn(
+              "block w-full truncate border-b border-transparent bg-transparent text-[13.5px] font-semibold outline-none transition-colors hover:border-line focus:border-brand",
+              !u.activo && "line-through opacity-50",
+            )}
+          />
+          <small className="text-[11.5px] text-ink-soft">desde {u.creado}</small>
+        </div>
+        <select
+          value={u.rol}
+          onChange={(e) => onEjecutar(() => actualizarUsuario(u.id, { rol: e.target.value as RolUsuario }))}
+          className="rounded-lg border border-line bg-card px-2 py-1 text-[12.5px] font-semibold outline-none focus:border-brand"
+        >
+          {ROLES.map((r) => (
+            <option key={r.valor} value={r.valor}>
+              {r.etiqueta}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => {
+            setCambiandoPass((v) => !v);
+            setNuevaPass("");
+          }}
+          title="Cambiar contraseña"
+          className={cn(
+            "cursor-pointer rounded-lg p-1.5 transition-colors",
+            cambiandoPass ? "bg-ink text-white" : "text-ink-soft hover:bg-chip hover:text-ink",
+          )}
+        >
+          <KeyRound className="size-4" />
+        </button>
+        <button
+          onClick={() => onEjecutar(() => actualizarUsuario(u.id, { activo: !u.activo }))}
+          className="cursor-pointer"
+          title={u.activo ? "Desactivar acceso" : "Reactivar acceso"}
+        >
+          {u.activo ? <Chip tone="good">activo</Chip> : <Chip tone="gray">sin acceso</Chip>}
+        </button>
+        <button
+          onClick={() => {
+            if (!borrando) {
+              onPedirBorrado();
+              return;
+            }
+            onEjecutar(() => eliminarUsuario(u.id));
+          }}
+          title={borrando ? "Otra vez para borrar" : "Eliminar usuario"}
+          className={cn(
+            "cursor-pointer rounded-lg p-1.5 transition-colors",
+            borrando ? "bg-bad text-white" : "text-ink-soft hover:bg-bad-soft hover:text-bad",
+          )}
+        >
+          <Trash2 className="size-4" />
+        </button>
+      </div>
+
+      {cambiandoPass && (
+        <div className="mt-2 flex items-center gap-2 border-t border-line pt-2">
+          <input
+            type="text"
+            placeholder={`Nueva contraseña de ${u.nombre} (mín. 6)`}
+            value={nuevaPass}
+            onChange={(e) => setNuevaPass(e.target.value)}
+            autoFocus
+            className="min-w-0 flex-1 rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] outline-none focus:border-brand"
+          />
+          <button
+            onClick={() =>
+              onEjecutar(async () => {
+                const res = await actualizarUsuario(u.id, { contrasena: nuevaPass });
+                if (res.ok) {
+                  setCambiandoPass(false);
+                  setNuevaPass("");
+                }
+                return res;
+              })
+            }
+            disabled={nuevaPass.length < 6 || ocupado}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-black disabled:opacity-40"
+          >
+            <Check className="size-3.5" /> Guardar
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

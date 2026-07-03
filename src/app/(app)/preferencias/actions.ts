@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, ne } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
 import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
 import { hashContrasena, type RolUsuario } from "@/lib/auth";
 
@@ -10,6 +10,16 @@ type Resultado = { ok: boolean; error?: string };
 const MAX_USUARIOS = 7; // como haddock
 
 const ROLES: RolUsuario[] = ["admin", "documentos", "gestor", "chef"];
+
+// El nombre identifica al usuario en el login (junto a su contraseña):
+// no puede repetirse ni chocar con el "Propietario" de la maestra.
+function normalizarNombre(nombre: string): string {
+  return nombre
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase();
+}
 
 function fallo(contexto: string, e: unknown): Resultado {
   console.error(`[preferencias] ${contexto} falló:`, e instanceof Error ? e.message : e);
@@ -69,16 +79,21 @@ export async function crearUsuario(datos: {
     return { ok: false, error: "Esa contraseña ya la usa el propietario: elige otra" };
   }
 
+  const nombreNorm = normalizarNombre(datos.nombre);
+  if (nombreNorm === "propietario") {
+    return { ok: false, error: "\"Propietario\" está reservado para la contraseña maestra" };
+  }
+
   try {
     const existentes = await conPlazo(db.select().from(schema.usuarios));
     if (existentes.length >= MAX_USUARIOS) {
       return { ok: false, error: `Máximo ${MAX_USUARIOS} usuarios` };
     }
-    // La contraseña identifica al usuario en el login: debe ser única.
-    const hash = await hashContrasena(datos.contrasena, secreto);
-    if (existentes.some((u) => u.contrasena === hash)) {
-      return { ok: false, error: "Esa contraseña ya la usa otro usuario: elige otra" };
+    // El login es usuario + contraseña: el nombre no puede repetirse.
+    if (existentes.some((u) => normalizarNombre(u.nombre) === nombreNorm)) {
+      return { ok: false, error: "Ya hay un usuario con ese nombre" };
     }
+    const hash = await hashContrasena(datos.contrasena, secreto);
     await conPlazo(
       db.insert(schema.usuarios).values({ nombre: datos.nombre.trim(), rol: datos.rol, contrasena: hash }),
     );
@@ -91,7 +106,7 @@ export async function crearUsuario(datos: {
 
 export async function actualizarUsuario(
   id: string,
-  datos: { rol?: RolUsuario; activo?: boolean; contrasena?: string },
+  datos: { nombre?: string; rol?: RolUsuario; activo?: boolean; contrasena?: string },
 ): Promise<Resultado> {
   const db = getDb();
   if (!db) return { ok: false, error: "Base de datos no configurada" };
@@ -99,6 +114,22 @@ export async function actualizarUsuario(
   if (!secreto) return { ok: false, error: "Falta AUTH_SECRET en el servidor" };
 
   const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (datos.nombre !== undefined) {
+    const nombreNorm = normalizarNombre(datos.nombre);
+    if (!datos.nombre.trim()) return { ok: false, error: "El nombre no puede estar vacío" };
+    if (nombreNorm === "propietario") {
+      return { ok: false, error: "\"Propietario\" está reservado para la contraseña maestra" };
+    }
+    try {
+      const otros = await conPlazo(db.select().from(schema.usuarios).where(ne(schema.usuarios.id, id)));
+      if (otros.some((u) => normalizarNombre(u.nombre) === nombreNorm)) {
+        return { ok: false, error: "Ya hay un usuario con ese nombre" };
+      }
+    } catch (e) {
+      return fallo("actualizarUsuario", e);
+    }
+    set.nombre = datos.nombre.trim();
+  }
   if (datos.rol !== undefined) {
     if (!ROLES.includes(datos.rol)) return { ok: false, error: "Rol no válido" };
     set.rol = datos.rol;
@@ -109,19 +140,7 @@ export async function actualizarUsuario(
     if (datos.contrasena === process.env.AUTH_PASSWORD) {
       return { ok: false, error: "Esa contraseña ya la usa el propietario: elige otra" };
     }
-    const hash = await hashContrasena(datos.contrasena, secreto);
-    try {
-      const [choque] = await conPlazo(
-        db
-          .select()
-          .from(schema.usuarios)
-          .where(and(eq(schema.usuarios.contrasena, hash), ne(schema.usuarios.id, id))),
-      );
-      if (choque) return { ok: false, error: "Esa contraseña ya la usa otro usuario: elige otra" };
-    } catch (e) {
-      return fallo("actualizarUsuario", e);
-    }
-    set.contrasena = hash;
+    set.contrasena = await hashContrasena(datos.contrasena, secreto);
   }
 
   try {

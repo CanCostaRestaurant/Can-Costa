@@ -9,12 +9,22 @@ export function LoginForm() {
   return (
     <form action={accion} className="flex flex-col gap-4">
       <label className="text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
+        Usuario
+        <input
+          type="text"
+          name="usuario"
+          required
+          autoFocus
+          autoComplete="username"
+          className="card mt-1.5 w-full rounded-xl! px-3.5 py-2.5 font-body text-[15px] font-normal tracking-normal outline-none focus:border-brand"
+        />
+      </label>
+      <label className="text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
         Contraseña
         <input
           type="password"
           name="contrasena"
           required
-          autoFocus
           autoComplete="current-password"
           className="card mt-1.5 w-full rounded-xl! px-3.5 py-2.5 font-body text-[15px] font-normal tracking-normal outline-none focus:border-brand"
         />
