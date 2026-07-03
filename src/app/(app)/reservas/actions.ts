@@ -67,7 +67,7 @@ async function ocupacionesDelDia(db: Db, fecha: string, excluirId?: string): Pro
 async function vincularCliente(
   db: Db,
   datos: { nombre: string; telefono?: string | null; email?: string | null },
-): Promise<{ id: string; reservasPrevias: number }> {
+): Promise<{ id: string; reservasPrevias: number; avisos: string[] }> {
   const candidatos = await conPlazo(
     db
       .select({
@@ -75,6 +75,8 @@ async function vincularCliente(
         nombre: schema.clientes.nombre,
         telefono: schema.clientes.telefono,
         email: schema.clientes.email,
+        etiquetas: schema.clientes.etiquetas,
+        restricciones: schema.clientes.restricciones,
       })
       .from(schema.clientes),
   );
@@ -91,7 +93,11 @@ async function vincularCliente(
     const previas = await conPlazo(
       db.select().from(schema.reservas).where(eq(schema.reservas.clienteId, coincidencia.id)),
     );
-    return { id: coincidencia.id, reservasPrevias: previas.length };
+    // Lo que quien coge el teléfono debe saber al vuelo: etiquetas y alergias.
+    const ficha = candidatos.find((c) => c.id === coincidencia.id);
+    const avisos = [...(ficha?.etiquetas ?? [])];
+    if (ficha?.restricciones) avisos.push(`⚠️ ${ficha.restricciones}`);
+    return { id: coincidencia.id, reservasPrevias: previas.length, avisos };
   }
 
   const [nuevo] = await conPlazo(
@@ -104,7 +110,7 @@ async function vincularCliente(
       })
       .returning({ id: schema.clientes.id }),
   );
-  return { id: nuevo.id, reservasPrevias: 0 };
+  return { id: nuevo.id, reservasPrevias: 0, avisos: [] };
 }
 
 export async function crearReserva(datos: {
@@ -172,8 +178,8 @@ export async function crearReserva(datos: {
       motivo: sugerencia?.motivo ?? "sin mesa libre para esa hora — revisa o reoptimiza",
       cliente:
         cliente.reservasPrevias > 0
-          ? `⭐ cliente habitual — ${cliente.reservasPrevias + 1}ª reserva`
-          : null,
+          ? [`⭐ cliente habitual — ${cliente.reservasPrevias + 1}ª reserva`, ...cliente.avisos].join(" · ")
+          : cliente.avisos.join(" · ") || null,
     };
   } catch (e) {
     return fallo("crearReserva", e);
@@ -272,7 +278,10 @@ export async function sentarReserva(reservaId: string): Promise<Resultado> {
           .where(eq(schema.reservas.id, reservaId)),
       ),
       conPlazo(
-        db.update(schema.tickets).set({ comensales: reserva.comensales }).where(eq(schema.tickets.id, ticket.id)),
+        db
+          .update(schema.tickets)
+          .set({ comensales: reserva.comensales, reservaId: reserva.id, clienteId: reserva.clienteId })
+          .where(eq(schema.tickets.id, ticket.id)),
       ),
     ]);
 

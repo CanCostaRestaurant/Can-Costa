@@ -1143,9 +1143,11 @@ export type ClienteResumen = {
   telefono: string | null;
   email: string | null;
   notas: string | null;
+  etiquetas: string[];
   numReservas: number;
   visitas: number; // reservas sentadas (vinieron de verdad)
   noShows: number;
+  gastoTotal: number; // € de tickets cobrados vinculados
   ultimaReserva: string; // legible
 };
 
@@ -1156,7 +1158,7 @@ export async function getClientes(): Promise<ClienteResumen[]> {
   try {
     return await conPlazo(
       (async (): Promise<ClienteResumen[]> => {
-        const [filas, reservasTodas] = await Promise.all([
+        const [filas, reservasTodas, gastos] = await Promise.all([
           db.select().from(schema.clientes),
           db
             .select({
@@ -1166,6 +1168,11 @@ export async function getClientes(): Promise<ClienteResumen[]> {
             })
             .from(schema.reservas)
             .where(isNotNull(schema.reservas.clienteId)),
+          db
+            .select({ clienteId: schema.tickets.clienteId, gasto: sum(schema.tickets.total) })
+            .from(schema.tickets)
+            .where(and(isNotNull(schema.tickets.clienteId), eq(schema.tickets.estado, "cobrado")))
+            .groupBy(schema.tickets.clienteId),
         ]);
 
         const agregados = new Map<
@@ -1180,6 +1187,7 @@ export async function getClientes(): Promise<ClienteResumen[]> {
           if (r.fecha > acc.ultima) acc.ultima = r.fecha;
           agregados.set(r.clienteId!, acc);
         }
+        const gastoPor = new Map(gastos.map((g) => [g.clienteId!, Number(g.gasto ?? 0)]));
 
         return filas
           .map((c): ClienteResumen => {
@@ -1190,9 +1198,11 @@ export async function getClientes(): Promise<ClienteResumen[]> {
               telefono: c.telefono,
               email: c.email,
               notas: c.notas,
+              etiquetas: c.etiquetas ?? [],
               numReservas: agg?.numReservas ?? 0,
               visitas: agg?.visitas ?? 0,
               noShows: agg?.noShows ?? 0,
+              gastoTotal: gastoPor.get(c.id) ?? 0,
               ultimaReserva: agg?.ultima ? fechaLegible(agg.ultima) : "—",
             };
           })
@@ -1203,5 +1213,148 @@ export async function getClientes(): Promise<ClienteResumen[]> {
   } catch (e) {
     logFallo("getClientes", e);
     return [];
+  }
+}
+
+// ---------------------------------------------------------------------
+// Ficha de cliente (estilo CoverManager): datos + resumen de
+// comportamiento + histórico de reservas con su gasto.
+// ---------------------------------------------------------------------
+
+export type ClienteDetalle = {
+  cliente: {
+    id: string;
+    nombre: string;
+    telefono: string | null;
+    email: string | null;
+    notas: string | null;
+    etiquetas: string[];
+    restricciones: string | null;
+    preferencias: string | null;
+    preferenciaMesa: string | null;
+    idioma: string | null;
+    desde: string; // legible (created_at)
+  };
+  resumen: {
+    numReservas: number;
+    visitas: number;
+    noShows: number;
+    canceladas: number;
+    gastoTotal: number;
+    ticketMedio: number | null;
+    gastoPorPersona: number | null;
+    ultimaVisita: string; // legible
+  };
+  historial: {
+    id: string;
+    fecha: string; // legible
+    fechaISO: string;
+    hora: string; // HH:MM
+    comensales: number;
+    estado: "confirmada" | "sentada" | "no_show" | "cancelada";
+    mesa: string; // "Mesa 3" | "Terraza 1 + Terraza 2" | "—"
+    gasto: number | null; // ticket cobrado de esa reserva
+    notas: string | null;
+  }[];
+  otrosClientes: { id: string; nombre: string; telefono: string | null }[]; // para unificar
+};
+
+export async function getClienteDetalle(id: string): Promise<ClienteDetalle | null> {
+  const db = getDb();
+  if (!db) return null;
+
+  try {
+    return await conPlazo(
+      (async (): Promise<ClienteDetalle | null> => {
+        const mesas2 = alias(schema.mesas, "mesas2");
+        const [[cliente], reservasCliente, ticketsCliente, resto] = await Promise.all([
+          db.select().from(schema.clientes).where(eq(schema.clientes.id, id)),
+          db
+            .select({
+              id: schema.reservas.id,
+              fecha: schema.reservas.fecha,
+              hora: schema.reservas.hora,
+              comensales: schema.reservas.comensales,
+              estado: schema.reservas.estado,
+              notas: schema.reservas.notas,
+              mesaNombre: schema.mesas.nombre,
+              mesa2Nombre: mesas2.nombre,
+            })
+            .from(schema.reservas)
+            .leftJoin(schema.mesas, eq(schema.reservas.mesaId, schema.mesas.id))
+            .leftJoin(mesas2, eq(schema.reservas.mesa2Id, mesas2.id))
+            .where(eq(schema.reservas.clienteId, id))
+            .orderBy(desc(schema.reservas.fecha), desc(schema.reservas.hora)),
+          db
+            .select({
+              reservaId: schema.tickets.reservaId,
+              total: schema.tickets.total,
+              comensales: schema.tickets.comensales,
+            })
+            .from(schema.tickets)
+            .where(and(eq(schema.tickets.clienteId, id), eq(schema.tickets.estado, "cobrado"))),
+          db
+            .select({ id: schema.clientes.id, nombre: schema.clientes.nombre, telefono: schema.clientes.telefono })
+            .from(schema.clientes)
+            .orderBy(asc(schema.clientes.nombre)),
+        ]);
+        if (!cliente) return null;
+
+        const gastoPorReserva = new Map<string, number>();
+        let gastoTotal = 0;
+        let personasCobradas = 0;
+        for (const t of ticketsCliente) {
+          const importe = Number(t.total ?? 0);
+          gastoTotal += importe;
+          personasCobradas += t.comensales ?? 0;
+          if (t.reservaId) gastoPorReserva.set(t.reservaId, (gastoPorReserva.get(t.reservaId) ?? 0) + importe);
+        }
+
+        const visitas = reservasCliente.filter((r) => r.estado === "sentada").length;
+        const ultimaSentada = reservasCliente.find((r) => r.estado === "sentada");
+
+        return {
+          cliente: {
+            id: cliente.id,
+            nombre: cliente.nombre,
+            telefono: cliente.telefono,
+            email: cliente.email,
+            notas: cliente.notas,
+            etiquetas: cliente.etiquetas ?? [],
+            restricciones: cliente.restricciones,
+            preferencias: cliente.preferencias,
+            preferenciaMesa: cliente.preferenciaMesa,
+            idioma: cliente.idioma,
+            desde: fechaLegible(cliente.createdAt.toISOString().slice(0, 10)),
+          },
+          resumen: {
+            numReservas: reservasCliente.length,
+            visitas,
+            noShows: reservasCliente.filter((r) => r.estado === "no_show").length,
+            canceladas: reservasCliente.filter((r) => r.estado === "cancelada").length,
+            gastoTotal,
+            ticketMedio: ticketsCliente.length ? gastoTotal / ticketsCliente.length : null,
+            gastoPorPersona: personasCobradas > 0 ? gastoTotal / personasCobradas : null,
+            ultimaVisita: ultimaSentada ? fechaLegible(ultimaSentada.fecha) : "—",
+          },
+          historial: reservasCliente.map((r) => ({
+            id: r.id,
+            fecha: fechaLegible(r.fecha),
+            fechaISO: r.fecha,
+            hora: r.hora.slice(0, 5),
+            comensales: r.comensales,
+            estado: r.estado,
+            mesa: r.mesaNombre ? (r.mesa2Nombre ? `${r.mesaNombre} + ${r.mesa2Nombre}` : r.mesaNombre) : "—",
+            gasto: gastoPorReserva.get(r.id) ?? null,
+            notas: r.notas,
+          })),
+          otrosClientes: resto.filter((c) => c.id !== id),
+        };
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getClienteDetalle", e);
+    return null;
   }
 }

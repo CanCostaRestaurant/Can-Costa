@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search, Star } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
@@ -82,6 +83,7 @@ export function ClientesClient({ clientes }: { clientes: ClienteResumen[] }) {
               <Th>Contacto</Th>
               <Th>Reservas</Th>
               <Th>Visitas</Th>
+              <Th>Gasto</Th>
               <Th>No-shows</Th>
               <Th>Última</Th>
               <Th>Notas</Th>
@@ -91,10 +93,22 @@ export function ClientesClient({ clientes }: { clientes: ClienteResumen[] }) {
             {visibles.map((c) => (
               <tr key={c.id} className="border-b border-line align-middle last:border-none hover:bg-hover">
                 <td className="px-3.5 py-2.5">
-                  <span className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Link
+                    href={`/clientes/${c.id}`}
+                    className="flex items-center gap-1.5 text-sm font-semibold hover:text-brand hover:underline"
+                  >
                     {c.nombre}
                     {c.numReservas >= 2 && <Star className="size-3.5 fill-warn text-warn" />}
-                  </span>
+                  </Link>
+                  {c.etiquetas.length > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {c.etiquetas.map((e) => (
+                        <span key={e} className="rounded-full bg-brand/10 px-2 py-0.5 text-[10.5px] font-semibold text-brand">
+                          {e}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </td>
                 <td className="px-3.5 py-2.5">
                   <CampoInline
@@ -110,6 +124,15 @@ export function ClientesClient({ clientes }: { clientes: ClienteResumen[] }) {
                 </td>
                 <td className="px-3.5 py-2.5 font-display text-[15px] font-bold">{c.numReservas}</td>
                 <td className="px-3.5 py-2.5 font-display text-[15px] font-bold text-good">{c.visitas}</td>
+                <td className="px-3.5 py-2.5 font-display text-[15px] font-bold whitespace-nowrap">
+                  {c.gastoTotal > 0
+                    ? `${c.gastoTotal.toLocaleString("es-ES", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                        useGrouping: "always" as unknown as boolean,
+                      })} €`
+                    : "—"}
+                </td>
                 <td className="px-3.5 py-2.5">
                   {c.noShows > 0 ? <Chip tone="bad">{c.noShows}</Chip> : <span className="text-ink-soft">—</span>}
                 </td>
@@ -126,7 +149,7 @@ export function ClientesClient({ clientes }: { clientes: ClienteResumen[] }) {
             ))}
             {visibles.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-ink-soft">
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-ink-soft">
                   {clientes.length === 0
                     ? "Aún no hay clientes: se crearán solos con la primera reserva."
                     : "Nadie coincide con la búsqueda."}

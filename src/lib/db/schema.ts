@@ -237,6 +237,8 @@ export const tickets = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     mesaId: uuid("mesa_id").references(() => mesas.id, { onDelete: "set null" }), // null = para llevar
+    reservaId: uuid("reserva_id").references(() => reservas.id, { onDelete: "set null" }), // null = walk-in
+    clienteId: uuid("cliente_id").references(() => clientes.id, { onDelete: "set null" }), // → gasto por cliente
     estado: ticketEstadoEnum("estado").notNull().default("abierto"),
     comensales: integer("comensales"),
     metodoPago: metodoPagoEnum("metodo_pago"), // se fija al cobrar
@@ -244,7 +246,11 @@ export const tickets = pgTable(
     abiertoAt: timestamp("abierto_at", { withTimezone: true }).notNull().defaultNow(),
     cobradoAt: timestamp("cobrado_at", { withTimezone: true }),
   },
-  (t) => [index("tickets_estado_idx").on(t.estado), index("tickets_cobrado_idx").on(t.cobradoAt)],
+  (t) => [
+    index("tickets_estado_idx").on(t.estado),
+    index("tickets_cobrado_idx").on(t.cobradoAt),
+    index("tickets_cliente_idx").on(t.clienteId),
+  ],
 );
 
 // Cada línea congela descripción y PVP del momento de la comanda.
@@ -276,7 +282,12 @@ export const clientes = pgTable("clientes", {
   nombre: text("nombre").notNull(),
   telefono: text("telefono"),
   email: text("email"),
-  notas: text("notas"), // alergias, preferencias, VIP…
+  notas: text("notas"),
+  etiquetas: jsonb("etiquetas").$type<string[]>().notNull().default([]), // VIP, Familiar, Vino blanco…
+  restricciones: text("restricciones"), // alergias e intolerancias
+  preferencias: text("preferencias"), // comida y bebida
+  preferenciaMesa: text("preferencia_mesa"), // terraza, rincón, lejos de la puerta…
+  idioma: text("idioma"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
