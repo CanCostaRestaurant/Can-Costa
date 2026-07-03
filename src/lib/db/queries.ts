@@ -707,6 +707,9 @@ export type MesaEstado = {
   nombre: string;
   zona: "sala" | "terraza" | "barra";
   capacidad: number;
+  forma: "cuadrada" | "redonda" | "alargada";
+  posX: number | null;
+  posY: number | null;
   activo: boolean;
   ticket: { id: string; total: number; comensales: number | null; minutos: number } | null;
 };
@@ -755,6 +758,9 @@ export async function getMapaMesas(): Promise<MapaMesasTpv> {
                   nombre: m.nombre,
                   zona: m.zona,
                   capacidad: m.capacidad,
+                  forma: m.forma,
+                  posX: m.posX,
+                  posY: m.posY,
                   activo: m.activo,
                   ticket: t
                     ? {

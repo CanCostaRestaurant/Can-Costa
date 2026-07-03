@@ -262,9 +262,38 @@ export async function crearMesa(datos: {
   }
 }
 
+// Coloca una mesa en el plano del local (x/y en % del lienzo).
+export async function moverMesa(id: string, posX: number, posY: number): Promise<Resultado> {
+  const db = getDb();
+  if (!db) return SIN_BD;
+  if (!Number.isFinite(posX) || !Number.isFinite(posY)) return { ok: false, error: "Posición no válida" };
+  try {
+    await conPlazo(
+      db
+        .update(schema.mesas)
+        .set({
+          posX: Math.round(Math.min(98, Math.max(2, posX))),
+          posY: Math.round(Math.min(96, Math.max(4, posY))),
+        })
+        .where(eq(schema.mesas.id, id)),
+    );
+    revalidatePath("/tpv/mesas");
+    revalidarTpv();
+    return { ok: true };
+  } catch (e) {
+    return fallo("moverMesa", e);
+  }
+}
+
 export async function actualizarMesa(
   id: string,
-  datos: { nombre?: string; zona?: "sala" | "terraza" | "barra"; capacidad?: number; activo?: boolean },
+  datos: {
+    nombre?: string;
+    zona?: "sala" | "terraza" | "barra";
+    capacidad?: number;
+    activo?: boolean;
+    forma?: "cuadrada" | "redonda" | "alargada";
+  },
 ): Promise<Resultado> {
   const db = getDb();
   if (!db) return SIN_BD;
@@ -275,6 +304,7 @@ export async function actualizarMesa(
     set.nombre = datos.nombre.trim();
   }
   if (datos.zona !== undefined) set.zona = datos.zona;
+  if (datos.forma !== undefined) set.forma = datos.forma;
   if (datos.capacidad !== undefined) {
     if (!Number.isFinite(datos.capacidad) || datos.capacidad < 1 || datos.capacidad > 30) {
       return { ok: false, error: "Capacidad entre 1 y 30" };

@@ -18,6 +18,9 @@ export default async function MesasPage() {
         nombre: m.nombre,
         zona: m.zona,
         capacidad: m.capacidad,
+        forma: m.forma,
+        posX: m.posX,
+        posY: m.posY,
         activo: m.activo,
       }));
     } catch {

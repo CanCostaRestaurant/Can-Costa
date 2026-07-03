@@ -208,13 +208,19 @@ export const platoIngredientes = pgTable(
 
 export const mesaZonaEnum = pgEnum("mesa_zona", ["sala", "terraza", "barra"]);
 
+export const mesaFormaEnum = pgEnum("mesa_forma", ["cuadrada", "redonda", "alargada"]);
+
 // La capacidad deja la distribución lista para el futuro módulo de RESERVAS
 // (cover manager): asignar la mejor mesa a una reserva de N comensales.
+// pos_x/pos_y (0-100, % del plano) sitúan la mesa en el plano del local.
 export const mesas = pgTable("mesas", {
   id: uuid("id").primaryKey().defaultRandom(),
   nombre: text("nombre").notNull(), // "Mesa 1", "Barra 2"…
   zona: mesaZonaEnum("zona").notNull().default("sala"),
   capacidad: integer("capacidad").notNull().default(4),
+  forma: mesaFormaEnum("forma").notNull().default("cuadrada"),
+  posX: integer("pos_x"), // null = sin colocar en el plano
+  posY: integer("pos_y"),
   orden: integer("orden"),
   activo: boolean("activo").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
