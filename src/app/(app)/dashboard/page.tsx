@@ -1,170 +1,344 @@
 import Link from "next/link";
-import { Chip, MonthChip, PageHead } from "@/components/ui";
-import { getDashboardData } from "@/lib/db/queries";
-import { type Producto } from "@/lib/mock";
-import { cn, eur, pct } from "@/lib/utils";
+import { Info } from "lucide-react";
+import { getDashboardMes, type ModoDashboard } from "@/lib/db/queries";
+import { cn, eur } from "@/lib/utils";
+import { DesgloseTabs } from "./desglose-tabs";
 
 export const dynamic = "force-dynamic";
 
-const EMOJI_FAMILIA: Record<Producto["familia"], string> = {
-  pescado: "🐟",
-  carne: "🥩",
-  "fruta-verdura": "🥑",
-  seco: "🫒",
-  bebida: "🥤",
-  otros: "📦",
-};
+const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
-export default async function DashboardPage() {
-  const d = await getDashboardData();
-  const maxBarra = Math.max(...d.semanas.map((s) => Math.max(s.ventas, s.compras)), 1);
+function mesActualMadrid(): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Madrid" }).format(new Date()).slice(0, 7);
+}
+
+function sumarMeses(mes: string, delta: number): string {
+  const [anyo, m] = mes.split("-").map(Number);
+  const d = new Date(anyo, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function etiquetaCorta(mes: string): string {
+  return `${MESES_CORTOS[Number(mes.slice(5, 7)) - 1]} ${mes.slice(0, 4)}`;
+}
+
+// Techo "bonito" para el eje Y (múltiplo de 1/2/2,5/5 × 10^n).
+function techoEje(max: number): number {
+  if (max <= 0) return 100;
+  const exp = 10 ** Math.floor(Math.log10(max));
+  for (const paso of [1, 2, 2.5, 5, 10]) {
+    if (max <= paso * exp) return paso * exp;
+  }
+  return 10 * exp;
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mes?: string; modo?: string; act?: string }>;
+}) {
+  const params = await searchParams;
+  const mesActual = mesActualMadrid();
+  const mes =
+    params.mes && /^\d{4}-\d{2}$/.test(params.mes) && params.mes <= mesActual ? params.mes : mesActual;
+  const modo: ModoDashboard = params.modo === "real" ? "real" : "general";
+  const semanal = params.act === "semanal";
+
+  const d = await getDashboardMes(mes, modo);
+
+  const href = (cambios: { mes?: string; modo?: string; act?: string }) => {
+    const q = new URLSearchParams();
+    const m = cambios.mes ?? mes;
+    const mo = cambios.modo ?? modo;
+    const a = cambios.act ?? (semanal ? "semanal" : "mensual");
+    if (m !== mesActual) q.set("mes", m);
+    if (mo !== "general") q.set("modo", mo);
+    if (a !== "mensual") q.set("act", a);
+    const s = q.toString();
+    return `/dashboard${s ? `?${s}` : ""}`;
+  };
+
+  // Barras: por día, o agrupadas por semana del mes (1-7, 8-14…).
+  const barras = semanal
+    ? Array.from({ length: Math.ceil(d.dias.length / 7) }, (_, i) => {
+        const trozo = d.dias.slice(i * 7, i * 7 + 7);
+        return {
+          etiqueta: `Sem ${i + 1}`,
+          ventas: trozo.reduce((a, x) => a + x.ventas, 0),
+          gastos: trozo.reduce((a, x) => a + x.gastos, 0),
+        };
+      })
+    : d.dias.map((x) => ({ etiqueta: String(x.dia), ventas: x.ventas, gastos: x.gastos }));
+
+  const techo = techoEje(Math.max(...barras.map((b) => Math.max(b.ventas, b.gastos)), 1));
+  const marcas = [0.25, 0.5, 0.75, 1].map((f) => f * techo);
 
   return (
     <section className="anim-in">
-      <PageHead
-        titulo="Dashboard"
-        subtitulo="Compras contra ventas y el food cost resultante"
-        derecha={<MonthChip>Últimas 4 semanas</MonthChip>}
-      />
-
-      <div className="mb-3.5 grid grid-cols-4 gap-3.5 max-md:grid-cols-2">
-        <Kpi etiqueta="Ventas" valor={eur(d.semanas.reduce((a, s) => a + s.ventas, 0), false)}>
-          sala + llevar
-        </Kpi>
-        <Kpi etiqueta="Compras" valor={eur(d.comprasPeriodo, false)}>
-          facturas y albaranes
-        </Kpi>
-        <Kpi etiqueta="Food cost" valor={d.foodCost !== null ? pct(d.foodCost) : "—"}>
-          objetivo <b>30%</b>
-        </Kpi>
-        <Kpi etiqueta="Margen bruto" valor={d.margenBruto !== null ? pct(d.margenBruto) : "—"}>
-          sobre lo vendido
-        </Kpi>
+      {/* Cabecera: título + modo General / A tiempo real */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-[26px] font-bold tracking-tight">
+          Dashboard
+          {modo === "real" && (
+            <span className="ml-2.5 align-middle text-[13px] font-bold tracking-widest text-ink-soft uppercase">
+              a tiempo real
+            </span>
+          )}
+        </h1>
+        <div className="flex items-center gap-2">
+          <InfoTip lado="derecha">
+            <b className="mb-1 block">General</b>
+            En las gráficas generales ves el importe de:
+            <ul className="mt-1 list-disc pl-4">
+              <li><b>Todas las facturas validadas</b></li>
+              <li><b>Todas las ventas</b> (TPV y apuntes manuales)</li>
+            </ul>
+            <span className="mt-1.5 block opacity-80">
+              *Las facturas de la bandeja no cuentan hasta que se validan.
+            </span>
+          </InfoTip>
+          <div className="flex rounded-xl border border-line bg-card p-1">
+            <Link
+              href={href({ modo: "general" })}
+              className={cn(
+                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
+                modo === "general" ? "bg-ink text-white" : "text-ink-soft hover:text-ink",
+              )}
+            >
+              General
+            </Link>
+            <Link
+              href={href({ modo: "real" })}
+              className={cn(
+                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
+                modo === "real" ? "bg-ink text-white" : "text-ink-soft hover:text-ink",
+              )}
+            >
+              A tiempo real
+            </Link>
+          </div>
+          <InfoTip lado="izquierda">
+            <b className="mb-1 block">A tiempo real</b>
+            Aquí ves el gasto según entra, sin esperar a revisar:
+            <ul className="mt-1 list-disc pl-4">
+              <li><b>Facturas validadas</b></li>
+              <li>
+                <b>Y también las digitalizadas pendientes de validar</b> en la bandeja
+                {d.facturasPendientes > 0 && ` (${d.facturasPendientes} este mes)`}
+              </li>
+              <li><b>Todas las ventas</b></li>
+            </ul>
+          </InfoTip>
+        </div>
       </div>
 
-      <div className="grid grid-cols-[1.6fr_1fr] gap-3.5 max-md:grid-cols-1">
-        <div className="card flex flex-col p-5.5">
+      {/* Barra de control: actividad + carrusel de meses */}
+      <div className="card mb-3.5 flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-3">
+        <div className="flex items-center gap-3">
+          <span className="text-[11.5px] font-bold tracking-widest text-ink-soft uppercase">Actividad</span>
+          <div className="flex rounded-lg bg-chip p-0.5">
+            <Link
+              href={href({ act: "mensual" })}
+              className={cn(
+                "rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors",
+                !semanal ? "bg-card shadow-sm" : "text-ink-soft hover:text-ink",
+              )}
+            >
+              Mensual
+            </Link>
+            <Link
+              href={href({ act: "semanal" })}
+              className={cn(
+                "rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors",
+                semanal ? "bg-card shadow-sm" : "text-ink-soft hover:text-ink",
+              )}
+            >
+              Semanal
+            </Link>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="text-[11.5px] font-bold tracking-widest text-ink-soft uppercase">Fecha</span>
+          <div className="flex flex-1 items-center justify-between gap-1 rounded-xl border border-line px-2 py-1.5">
+            {[-2, -1, 0, 1, 2].map((delta) => {
+              const m = sumarMeses(mes, delta);
+              const futuro = m > mesActual;
+              if (delta === 0) {
+                return (
+                  <span key={delta} className="flex items-center gap-1.5">
+                    <Link
+                      href={href({ mes: sumarMeses(mes, -1) })}
+                      className="rounded-md px-1.5 py-0.5 text-ink-soft hover:bg-chip hover:text-ink"
+                    >
+                      ‹
+                    </Link>
+                    <b className="text-[13.5px] font-bold whitespace-nowrap">{etiquetaCorta(m)}</b>
+                    {sumarMeses(mes, 1) <= mesActual ? (
+                      <Link
+                        href={href({ mes: sumarMeses(mes, 1) })}
+                        className="rounded-md px-1.5 py-0.5 text-ink-soft hover:bg-chip hover:text-ink"
+                      >
+                        ›
+                      </Link>
+                    ) : (
+                      <span className="px-1.5 py-0.5 text-line">›</span>
+                    )}
+                  </span>
+                );
+              }
+              return futuro ? (
+                <span key={delta} className="px-2 text-[12.5px] whitespace-nowrap text-line max-md:hidden">
+                  {etiquetaCorta(m)}
+                </span>
+              ) : (
+                <Link
+                  key={delta}
+                  href={href({ mes: m })}
+                  className="rounded-md px-2 py-0.5 text-[12.5px] whitespace-nowrap text-ink-soft hover:bg-chip hover:text-ink max-md:hidden"
+                >
+                  {etiquetaCorta(m)}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* KPIs Gastos / Ventas / Margen */}
+      <div className="mb-3.5 grid grid-cols-3 gap-3.5 max-md:grid-cols-1">
+        <Kpi etiqueta="Gastos" mes={etiquetaCorta(mes)} valor={eur(d.gastos)} />
+        <Kpi etiqueta="Ventas" mes={etiquetaCorta(mes)} valor={eur(d.ventas)} />
+        <Kpi etiqueta="Margen" mes={etiquetaCorta(mes)} valor={eur(d.margen)} destacado />
+      </div>
+
+      <div className="grid grid-cols-[1.55fr_1fr] items-start gap-3.5 max-lg:grid-cols-1">
+        {/* Visión general: barras diarias del mes */}
+        <div className="card p-5.5">
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-base font-bold tracking-tight">Compras y ventas por semana</h3>
-            <div className="flex items-center gap-4 text-xs font-semibold text-ink-soft">
-              <span className="flex items-center gap-1.5">
-                <span className="size-2.5 rounded-full bg-[#C9DCC0]" /> Ventas
+            <h3 className="font-display text-base font-bold tracking-tight">
+              {modo === "real" ? "Vista a tiempo real" : "Visión general"}
+            </h3>
+            <span className="text-[12.5px] font-semibold text-ink-soft">{d.etiquetaMes}</span>
+          </div>
+
+          <div className="relative mt-8 h-[230px]">
+            {/* Rejilla y eje Y */}
+            <div className="absolute inset-y-0 right-0 left-12">
+              <div className="absolute right-0 bottom-0 left-0 border-t border-line" />
+              {marcas.map((m) => (
+                <div
+                  key={m}
+                  className="absolute right-0 left-0 border-t border-dashed border-line"
+                  style={{ bottom: `${(m / techo) * 100}%` }}
+                />
+              ))}
+            </div>
+            {[0, ...marcas].map((m) => (
+              <span
+                key={m}
+                className="absolute left-0 w-10 translate-y-1/2 text-right text-[10px] text-ink-soft"
+                style={{ bottom: `${(m / techo) * 100}%` }}
+              >
+                {eur(m, false)}
               </span>
-              <span className="flex items-center gap-1.5">
-                <span className="size-2.5 rounded-full bg-brand" /> Compras
-              </span>
+            ))}
+            {/* Barras */}
+            <div className={cn("absolute inset-y-0 right-0 left-12 flex items-end", semanal ? "gap-6 px-6" : "gap-[3px] px-0.5")}>
+              {barras.map((b) => (
+                <div
+                  key={b.etiqueta}
+                  title={`${semanal ? b.etiqueta : `Día ${b.etiqueta}`} — ventas ${eur(b.ventas)} · gastos ${eur(b.gastos)}`}
+                  className="flex h-full flex-1 items-end justify-center gap-px"
+                >
+                  <div
+                    className={cn("w-full rounded-t-[3px] bg-[#9CBE8C]", semanal ? "max-w-9" : "max-w-2.5")}
+                    style={{ height: `${(b.ventas / techo) * 100}%` }}
+                  />
+                  <div
+                    className={cn("w-full rounded-t-[3px] bg-ink", semanal ? "max-w-9" : "max-w-2.5")}
+                    style={{ height: `${(b.gastos / techo) * 100}%` }}
+                  />
+                </div>
+              ))}
             </div>
           </div>
-          <div className="flex min-h-[200px] flex-1 gap-5 px-1.5 pt-8">
-            {d.semanas.map((s) => (
-              <div key={s.etiqueta} className="flex flex-1 items-end justify-center gap-1.5">
-                <Barra valor={s.ventas} max={maxBarra} clase="bg-[#C9DCC0]" />
-                <Barra valor={s.compras} max={maxBarra} clase="bg-brand" />
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-5 border-t border-line px-1.5">
-            {d.semanas.map((s) => (
-              <span key={s.etiqueta} className="flex-1 pt-2 text-center text-xs text-ink-soft">
-                {s.etiqueta}
+          {/* Eje X */}
+          <div className={cn("mt-1.5 ml-12 flex", semanal ? "gap-6 px-6" : "gap-[3px] px-0.5")}>
+            {barras.map((b) => (
+              <span key={b.etiqueta} className="flex-1 text-center text-[9.5px] text-ink-soft">
+                {b.etiqueta}
               </span>
             ))}
           </div>
-        </div>
-
-        <div className="flex flex-col gap-3.5">
-          <div className="card p-5.5 pb-3">
-            <h3 className="mb-2 flex items-center gap-2 font-display text-base font-bold tracking-tight">
-              Subidas de precio
-              <span
-                className={cn(
-                  "rounded-full px-2 py-0.5 font-body text-[11.5px]",
-                  d.alertas.length > 0 ? "bg-bad-soft text-bad" : "bg-good-soft text-good",
-                )}
-              >
-                {d.alertas.length}
-              </span>
-            </h3>
-            {d.alertas.slice(0, 3).map((p) => (
-              <Link
-                key={p.id}
-                href="/incidencias"
-                className="-mx-2 flex items-center gap-3 rounded-lg border-b border-line px-2 py-2.5 last:border-none hover:bg-hover"
-              >
-                <div className="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-bad-soft text-[15px]">
-                  {EMOJI_FAMILIA[p.familia]}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <b className="block text-sm font-semibold">{p.nombre}</b>
-                  <small className="text-xs text-ink-soft">
-                    {p.proveedor} · {p.precio}
-                  </small>
-                </div>
-                <span className="font-display text-[15px] font-bold text-bad">+{p.variacion}%</span>
-              </Link>
-            ))}
-            {d.alertas.length === 0 && (
-              <p className="pb-2.5 text-[13.5px] text-ink-soft">
-                Sin subidas relevantes. Se avisará aquí cuando un producto suba un 5% o más.
-              </p>
-            )}
-          </div>
-
-          <div className="card p-5.5 pb-3">
-            <h3 className="mb-2 font-display text-base font-bold tracking-tight">Últimas facturas</h3>
-            {d.ultimas.map((f) => (
-              <Link
-                key={f.id}
-                href="/documentos"
-                className="-mx-2 flex items-center gap-3 rounded-lg border-b border-line px-2 py-2.5 text-[13.5px] last:border-none hover:bg-hover"
-              >
-                <b className="flex-1 font-semibold">{f.proveedor}</b>
-                {f.estado === "revisar" ? (
-                  <Chip tone="warn" dot>
-                    Revisar
-                  </Chip>
-                ) : (
-                  <Chip tone="good" dot>
-                    Validada
-                  </Chip>
-                )}
-                <span className="font-display font-semibold">{eur(f.total)}</span>
-              </Link>
-            ))}
+          <div className="mt-4 flex justify-end gap-4 text-xs font-semibold text-ink-soft">
+            <span className="flex items-center gap-1.5">
+              <span className="size-2.5 rounded-[3px] bg-[#9CBE8C]" /> Ventas
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="size-2.5 rounded-[3px] bg-ink" /> Gastos
+            </span>
           </div>
         </div>
+
+        {/* Desglose del mes */}
+        <DesgloseTabs
+          etiquetaMes={d.etiquetaMes}
+          etiquetaCorta={etiquetaCorta(mes)}
+          gastos={d.gastos}
+          ventas={d.ventas}
+          margen={d.margen}
+          margenPct={d.margenPct}
+          foodCostPct={d.foodCostPct}
+          listaGastos={d.desgloseGastos}
+          listaVentas={d.desgloseVentas}
+        />
       </div>
     </section>
   );
 }
 
-function Barra({ valor, max, clase }: { valor: number; max: number; clase: string }) {
+function Kpi({
+  etiqueta,
+  mes,
+  valor,
+  destacado,
+}: {
+  etiqueta: string;
+  mes: string;
+  valor: string;
+  destacado?: boolean;
+}) {
   return (
-    <div
-      className={cn("anim-grow relative w-full max-w-14 rounded-t-lg", clase)}
-      style={{ height: `${Math.max((valor / max) * 100, 1)}%` }}
-    >
-      <span className="absolute -top-5.5 left-1/2 -translate-x-1/2 font-display text-[11.5px] font-bold whitespace-nowrap">
-        {valor > 0 ? eur(valor, false) : ""}
-      </span>
+    <div className={cn("card p-5", destacado && "bg-ink text-white")}>
+      <div className="flex items-baseline justify-between">
+        <span
+          className={cn(
+            "text-[12.5px] font-semibold tracking-wider uppercase",
+            destacado ? "text-white/70" : "text-ink-soft",
+          )}
+        >
+          {etiqueta}
+        </span>
+        <span className={cn("text-[11.5px]", destacado ? "text-white/50" : "text-ink-soft/70")}>{mes}</span>
+      </div>
+      <div className="mt-2 font-display text-[30px] font-bold tracking-tight">{valor}</div>
     </div>
   );
 }
 
-function Kpi({
-  etiqueta,
-  valor,
-  children,
-}: {
-  etiqueta: string;
-  valor: string;
-  children: React.ReactNode;
-}) {
+function InfoTip({ children, lado }: { children: React.ReactNode; lado: "izquierda" | "derecha" }) {
   return (
-    <div className="card p-5">
-      <div className="text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">{etiqueta}</div>
-      <div className="mt-1.5 font-display text-[31px] font-bold tracking-tight">{valor}</div>
-      <div className="mt-1 text-[12.5px] text-ink-soft">{children}</div>
-    </div>
+    <span className="group relative inline-flex">
+      <Info className="size-4 cursor-help text-ink-soft/60 hover:text-ink-soft" />
+      <span
+        className={cn(
+          "pointer-events-none absolute top-6 z-30 hidden w-72 rounded-xl bg-ink p-3.5 text-left text-[12px] leading-relaxed text-white shadow-xl group-hover:block",
+          lado === "izquierda" ? "right-0" : "left-0",
+        )}
+      >
+        {children}
+      </span>
+    </span>
   );
 }

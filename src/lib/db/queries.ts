@@ -1358,3 +1358,181 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalle | nu
     return null;
   }
 }
+
+// ---------------------------------------------------------------------
+// Dashboard mensual estilo haddock: General (solo validado) vs A tiempo
+// real (incluye la bandeja pendiente de validar).
+// ---------------------------------------------------------------------
+
+const MESES_LARGOS = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+export type ModoDashboard = "general" | "real";
+
+export type DashboardMes = {
+  mes: string; // "2026-07"
+  etiquetaMes: string; // "julio 2026"
+  dias: { dia: number; ventas: number; gastos: number }[];
+  gastos: number;
+  ventas: number;
+  margen: number;
+  margenPct: number | null;
+  foodCostPct: number | null;
+  desgloseGastos: { nombre: string; importe: number; pct: number }[]; // por proveedor
+  desgloseVentas: { nombre: string; importe: number; pct: number }[]; // por método de cobro
+  facturasPendientes: number; // en bandeja (estado revisar/procesando) dentro del mes
+};
+
+function limitesMes(mes: string): { inicio: string; fin: string; dias: number } {
+  const [anyo, m] = mes.split("-").map(Number);
+  const dias = new Date(anyo, m, 0).getDate();
+  const fin = m === 12 ? `${anyo + 1}-01-01` : `${anyo}-${String(m + 1).padStart(2, "0")}-01`;
+  return { inicio: `${mes}-01`, fin, dias };
+}
+
+export function etiquetaMesLarga(mes: string): string {
+  const [anyo, m] = mes.split("-").map(Number);
+  return `${MESES_LARGOS[m - 1]} ${anyo}`;
+}
+
+const VACIO_MES = (mes: string): DashboardMes => ({
+  mes,
+  etiquetaMes: etiquetaMesLarga(mes),
+  dias: [],
+  gastos: 0,
+  ventas: 0,
+  margen: 0,
+  margenPct: null,
+  foodCostPct: null,
+  desgloseGastos: [],
+  desgloseVentas: [],
+  facturasPendientes: 0,
+});
+
+function topConOtros(entradas: Map<string, number>, total: number, maximo = 5) {
+  const orden = [...entradas.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const top = orden.slice(0, maximo);
+  const resto = orden.slice(maximo).reduce((a, [, v]) => a + v, 0);
+  if (resto > 0) top.push(["Otros", resto]);
+  return top.map(([nombre, importe]) => ({
+    nombre,
+    importe,
+    pct: total > 0 ? (importe / total) * 100 : 0,
+  }));
+}
+
+export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise<DashboardMes> {
+  const db = getDb();
+  if (!db) return VACIO_MES(mes);
+  if (!/^\d{4}-\d{2}$/.test(mes)) return VACIO_MES(mes);
+
+  const { inicio, fin, dias: nDias } = limitesMes(mes);
+  const estados: ("validada" | "revisar" | "procesando")[] =
+    modo === "real" ? ["validada", "revisar"] : ["validada"];
+
+  try {
+    return await conPlazo(
+      (async (): Promise<DashboardMes> => {
+        const [facturasMes, ventasMes, ticketsMes, pendientes] = await Promise.all([
+          db
+            .select({
+              fecha: schema.facturas.fecha,
+              total: schema.facturas.total,
+              proveedor: schema.proveedores.nombre,
+              proveedorTexto: schema.facturas.proveedorTexto,
+            })
+            .from(schema.facturas)
+            .leftJoin(schema.proveedores, eq(schema.facturas.proveedorId, schema.proveedores.id))
+            .where(
+              and(
+                inArray(schema.facturas.estado, estados),
+                gte(schema.facturas.fecha, inicio),
+                lt(schema.facturas.fecha, fin),
+              ),
+            ),
+          db
+            .select({ fecha: schema.ventasDia.fecha, total: schema.ventasDia.total })
+            .from(schema.ventasDia)
+            .where(and(gte(schema.ventasDia.fecha, inicio), lt(schema.ventasDia.fecha, fin))),
+          db
+            .select({ metodoPago: schema.tickets.metodoPago, total: schema.tickets.total })
+            .from(schema.tickets)
+            .where(
+              and(
+                eq(schema.tickets.estado, "cobrado"),
+                gte(schema.tickets.cobradoAt, new Date(`${inicio}T00:00:00+02:00`)),
+                lt(schema.tickets.cobradoAt, new Date(`${fin}T00:00:00+02:00`)),
+              ),
+            ),
+          db
+            .select({ n: count() })
+            .from(schema.facturas)
+            .where(
+              and(
+                inArray(schema.facturas.estado, ["revisar", "procesando"]),
+                gte(schema.facturas.fecha, inicio),
+                lt(schema.facturas.fecha, fin),
+              ),
+            ),
+        ]);
+
+        const porDia = new Map<number, { ventas: number; gastos: number }>();
+        for (let d = 1; d <= nDias; d++) porDia.set(d, { ventas: 0, gastos: 0 });
+        const gastosProveedor = new Map<string, number>();
+
+        let gastos = 0;
+        for (const f of facturasMes) {
+          const importe = Number(f.total ?? 0);
+          gastos += importe;
+          if (f.fecha) {
+            const d = Number(f.fecha.slice(8, 10));
+            porDia.get(d)!.gastos += importe;
+          }
+          const nombre = f.proveedor ?? f.proveedorTexto ?? "Sin proveedor";
+          gastosProveedor.set(nombre, (gastosProveedor.get(nombre) ?? 0) + importe);
+        }
+
+        let ventas = 0;
+        for (const v of ventasMes) {
+          const importe = Number(v.total);
+          ventas += importe;
+          porDia.get(Number(v.fecha.slice(8, 10)))!.ventas += importe;
+        }
+
+        let efectivo = 0;
+        let tarjeta = 0;
+        for (const t of ticketsMes) {
+          const importe = Number(t.total ?? 0);
+          if (t.metodoPago === "efectivo") efectivo += importe;
+          else tarjeta += importe;
+        }
+        const ventasPorMetodo = new Map<string, number>([
+          ["Tarjeta", tarjeta],
+          ["Efectivo", efectivo],
+          ["Apunte manual", Math.max(0, ventas - efectivo - tarjeta)],
+        ]);
+
+        const margen = ventas - gastos;
+        return {
+          mes,
+          etiquetaMes: etiquetaMesLarga(mes),
+          dias: [...porDia.entries()].map(([dia, v]) => ({ dia, ...v })),
+          gastos,
+          ventas,
+          margen,
+          margenPct: ventas > 0 ? (margen / ventas) * 100 : null,
+          foodCostPct: ventas > 0 ? (gastos / ventas) * 100 : null,
+          desgloseGastos: topConOtros(gastosProveedor, gastos),
+          desgloseVentas: topConOtros(ventasPorMetodo, ventas),
+          facturasPendientes: Number(pendientes[0]?.n ?? 0),
+        };
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getDashboardMes", e);
+    return VACIO_MES(mes);
+  }
+}
