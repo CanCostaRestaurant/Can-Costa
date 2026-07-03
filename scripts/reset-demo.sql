@@ -24,9 +24,19 @@ delete from ventas_dia where origen = 'seed';
 delete from productos where id::text like 'b0000000-%';
 delete from proveedores where id::text like 'a0000000-%';
 
+-- TPV, reservas y clientes: hasta la apertura TODO es de pruebas → se vacían
+-- enteras. Las MESAS (plano del restaurante) se conservan: son configuración real.
+delete from ticket_lineas;
+delete from tickets;
+delete from reservas;
+delete from clientes;
+delete from ventas_dia where origen = 'tpv';
+
 commit;
 
 select (select count(*) from facturas)   as facturas,
        (select count(*) from productos)  as productos,
        (select count(*) from platos)     as platos,
-       (select count(*) from ventas_dia) as ventas;
+       (select count(*) from ventas_dia) as ventas,
+       (select count(*) from reservas)   as reservas,
+       (select count(*) from clientes)   as clientes;
