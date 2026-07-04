@@ -1,4 +1,4 @@
-import { getPersonalMes } from "@/lib/db/queries";
+import { getPersonalMes, getTrabajadores } from "@/lib/db/queries";
 import { PersonalClient } from "./personal-client";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,6 @@ export default async function PersonalPage({
 }) {
   const { mes } = await searchParams;
   const elegido = mes && /^\d{4}-\d{2}$/.test(mes) ? mes : mesActualMadrid();
-  const datos = await getPersonalMes(elegido);
-  return <PersonalClient datos={datos} />;
+  const [datos, trabajadores] = await Promise.all([getPersonalMes(elegido), getTrabajadores()]);
+  return <PersonalClient datos={datos} trabajadores={trabajadores} />;
 }

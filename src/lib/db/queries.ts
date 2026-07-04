@@ -3,7 +3,7 @@
 // - Con BD pero caída o colgada (p. ej. incidencia de Supabase) → plazo duro
 //   de 8s por consulta (conPlazo) + estados VACÍOS y console.error: la app
 //   degrada con elegancia en vez de devolver un 500 o colgarse minutos.
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, max, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, max, sql, sum } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { conPlazo, getDb, resetDb, schema } from "./index";
 import {
@@ -2096,11 +2096,56 @@ export async function getConciliacion(): Promise<Conciliacion> {
 // Personal: gastos de personal por mes (suman al dashboard)
 // ---------------------------------------------------------------------
 
+export type GastoPersonal = {
+  id: string;
+  concepto: string;
+  importe: number;
+  tipo: "nomina" | "seguridad_social" | "otro";
+  trabajadorId: string | null;
+  trabajadorNombre: string | null;
+  // El PDF (base64) NO viaja en la lista: solo su presencia y nombre.
+  tieneDocumento: boolean;
+  documentoNombre: string | null;
+};
+
 export type PersonalMes = {
   mes: string;
-  gastos: { id: string; concepto: string; importe: number }[];
+  gastos: GastoPersonal[];
   total: number;
 };
+
+export type Trabajador = {
+  id: string;
+  nombre: string;
+  puesto: string | null;
+  salario: number | null;
+  activo: boolean;
+};
+
+export async function getTrabajadores(): Promise<Trabajador[]> {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    return await conPlazo(
+      (async (): Promise<Trabajador[]> => {
+        const filas = await db
+          .select()
+          .from(schema.personalTrabajadores)
+          .orderBy(desc(schema.personalTrabajadores.activo), asc(schema.personalTrabajadores.nombre));
+        return filas.map((f) => ({
+          id: f.id,
+          nombre: f.nombre,
+          puesto: f.puesto,
+          salario: f.salario !== null ? Number(f.salario) : null,
+          activo: f.activo,
+        }));
+      })(),
+    );
+  } catch (e) {
+    logFallo("getTrabajadores", e);
+    return [];
+  }
+}
 
 export async function getPersonalMes(mes: string): Promise<PersonalMes> {
   const db = getDb();
@@ -2109,11 +2154,34 @@ export async function getPersonalMes(mes: string): Promise<PersonalMes> {
     return await conPlazo(
       (async (): Promise<PersonalMes> => {
         const filas = await db
-          .select()
+          .select({
+            id: schema.personalGastos.id,
+            concepto: schema.personalGastos.concepto,
+            importe: schema.personalGastos.importe,
+            tipo: schema.personalGastos.tipo,
+            trabajadorId: schema.personalGastos.trabajadorId,
+            documentoNombre: schema.personalGastos.documentoNombre,
+            // Solo si hay documento, sin traer el base64:
+            tieneDoc: sql<boolean>`${schema.personalGastos.documento} is not null`,
+            trabajadorNombre: schema.personalTrabajadores.nombre,
+          })
           .from(schema.personalGastos)
+          .leftJoin(
+            schema.personalTrabajadores,
+            eq(schema.personalGastos.trabajadorId, schema.personalTrabajadores.id),
+          )
           .where(eq(schema.personalGastos.mes, mes))
           .orderBy(asc(schema.personalGastos.createdAt));
-        const gastos = filas.map((f) => ({ id: f.id, concepto: f.concepto, importe: Number(f.importe) }));
+        const gastos: GastoPersonal[] = filas.map((f) => ({
+          id: f.id,
+          concepto: f.concepto,
+          importe: Number(f.importe),
+          tipo: f.tipo,
+          trabajadorId: f.trabajadorId,
+          trabajadorNombre: f.trabajadorNombre,
+          tieneDocumento: Boolean(f.tieneDoc),
+          documentoNombre: f.documentoNombre,
+        }));
         return { mes, gastos, total: gastos.reduce((a, g) => a + g.importe, 0) };
       })(),
     );

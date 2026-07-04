@@ -154,9 +154,22 @@ export const facturas = pgTable(
 );
 
 // ---------------------------------------------------------------------
-// personal_gastos  (gastos de personal por mes: nóminas, SS…; suman al
-// dashboard en la categoría "personal", como en haddock)
+// personal  (nóminas como JOMA: roster de trabajadores persistente +
+// gasto de personal por mes con documento PDF adjunto)
 // ---------------------------------------------------------------------
+
+// Roster de la plantilla: sobrevive entre meses (activo/baja como JOMA).
+export const personalTrabajadores = pgTable("personal_trabajadores", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nombre: text("nombre").notNull(),
+  puesto: text("puesto"), // "Cocina", "Sala", "Encargado"…
+  salario: numeric("salario", { precision: 12, scale: 2 }), // nómina mensual de referencia (líquido)
+  activo: boolean("activo").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const personalTipoEnum = pgEnum("personal_tipo", ["nomina", "seguridad_social", "otro"]);
 
 export const personalGastos = pgTable(
   "personal_gastos",
@@ -165,6 +178,11 @@ export const personalGastos = pgTable(
     mes: text("mes").notNull(), // "YYYY-MM"
     concepto: text("concepto").notNull(), // "Nómina Marc", "Seguridad Social"…
     importe: numeric("importe", { precision: 12, scale: 2 }).notNull(),
+    trabajadorId: uuid("trabajador_id").references(() => personalTrabajadores.id, { onDelete: "set null" }),
+    tipo: personalTipoEnum("tipo").notNull().default("nomina"),
+    // PDF de la nómina como data URL (base64). Sin Supabase Storage aún.
+    documento: text("documento"),
+    documentoNombre: text("documento_nombre"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("personal_gastos_mes_idx").on(t.mes)],
