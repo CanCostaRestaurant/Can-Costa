@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, gte, lt, sum } from "drizzle-orm";
+import { and, eq, gte, lt, sql, sum } from "drizzle-orm";
 import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
 
 type Resultado = { ok: boolean; error?: string; id?: string };
@@ -162,7 +162,12 @@ export async function cambiarComensales(ticketId: string, comensales: number): P
 }
 
 // Cobra el ticket y recalcula las ventas del día (alimenta el dashboard).
-export async function cobrarTicket(ticketId: string, metodo: "efectivo" | "tarjeta"): Promise<Resultado> {
+// `entregado` = efectivo con el que paga el cliente (para calcular el cambio).
+export async function cobrarTicket(
+  ticketId: string,
+  metodo: "efectivo" | "tarjeta",
+  entregado?: number,
+): Promise<Resultado> {
   const db = getDb();
   if (!db) return SIN_BD;
   try {
@@ -173,15 +178,35 @@ export async function cobrarTicket(ticketId: string, metodo: "efectivo" | "tarje
     if (lineas.length === 0) return { ok: false, error: "El ticket está vacío" };
 
     const total = lineas.reduce((acc, l) => acc + Number(l.total), 0);
+    if (metodo === "efectivo" && entregado !== undefined && entregado > 0 && entregado < total - 0.001) {
+      return { ok: false, error: "El efectivo entregado es menor que el total" };
+    }
     const ahora = new Date();
     const fecha = ahora.toISOString().slice(0, 10);
     const desde = new Date(fecha + "T00:00:00Z");
     const hasta = new Date(desde.getTime() + 86_400_000);
 
+    // Nº de ticket correlativo del año (a partir del máximo existente).
+    const inicioAnyo = new Date(`${ahora.getUTCFullYear()}-01-01T00:00:00Z`);
+    const [ult] = await conPlazo(
+      db
+        .select({ maximo: sql<number>`coalesce(max(${schema.tickets.numero}), 0)` })
+        .from(schema.tickets)
+        .where(and(eq(schema.tickets.estado, "cobrado"), gte(schema.tickets.cobradoAt, inicioAnyo))),
+    );
+    const numero = Number(ult?.maximo ?? 0) + 1;
+
     await conPlazo(
       db
         .update(schema.tickets)
-        .set({ estado: "cobrado", metodoPago: metodo, total: total.toFixed(2), cobradoAt: ahora })
+        .set({
+          estado: "cobrado",
+          metodoPago: metodo,
+          numero,
+          entregado: metodo === "efectivo" && entregado ? entregado.toFixed(2) : null,
+          total: total.toFixed(2),
+          cobradoAt: ahora,
+        })
         .where(eq(schema.tickets.id, ticketId)),
     );
 
@@ -213,7 +238,7 @@ export async function cobrarTicket(ticketId: string, metodo: "efectivo" | "tarje
     revalidatePath("/ventas");
     revalidatePath("/dashboard");
     revalidatePath("/");
-    return { ok: true };
+    return { ok: true, id: ticketId };
   } catch (e) {
     return fallo("cobrarTicket", e);
   }

@@ -180,6 +180,12 @@ export const ajustes = pgTable("ajustes", {
   ventasConTotal: boolean("ventas_con_total").notNull().default(true), // ventas con total o con base
   ivaVentasPct: numeric("iva_ventas_pct", { precision: 5, scale: 2 }).notNull().default("10"), // IVA automático de ventas
   toleranciaConciliacion: numeric("tolerancia_conciliacion", { precision: 8, scale: 2 }).notNull().default("1"),
+  // Datos fiscales del local para el ticket de venta (factura simplificada).
+  nombreFiscal: text("nombre_fiscal"),
+  cif: text("cif"),
+  direccion: text("direccion"),
+  telefono: text("telefono"),
+  pieTicket: text("pie_ticket").notNull().default("¡Gracias por su visita!"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -322,8 +328,10 @@ export const tickets = pgTable(
     reservaId: uuid("reserva_id").references(() => reservas.id, { onDelete: "set null" }), // null = walk-in
     clienteId: uuid("cliente_id").references(() => clientes.id, { onDelete: "set null" }), // → gasto por cliente
     estado: ticketEstadoEnum("estado").notNull().default("abierto"),
+    numero: integer("numero"), // nº correlativo del ticket, se asigna al cobrar
     comensales: integer("comensales"),
     metodoPago: metodoPagoEnum("metodo_pago"), // se fija al cobrar
+    entregado: numeric("entregado", { precision: 12, scale: 2 }), // efectivo entregado (para el cambio)
     total: numeric("total", { precision: 12, scale: 2 }), // se fija al cobrar
     abiertoAt: timestamp("abierto_at", { withTimezone: true }).notNull().defaultNow(),
     cobradoAt: timestamp("cobrado_at", { withTimezone: true }),

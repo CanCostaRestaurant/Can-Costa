@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Banknote, CreditCard, Minus, Plus, Users } from "lucide-react";
+import { ArrowLeft, Banknote, Check, CreditCard, Minus, Plus, Printer, Users, X } from "lucide-react";
 import { type PlatoTpv, type TicketDetalle } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
 import {
@@ -30,6 +30,7 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
   const [confirmarAnular, setConfirmarAnular] = useState(false);
   const [libreDesc, setLibreDesc] = useState("");
   const [librePrecio, setLibrePrecio] = useState("");
+  const [cobrando, setCobrando] = useState(false);
 
   function ejecutar(fn: () => Promise<{ ok: boolean; error?: string }>, alTerminar?: () => void) {
     setError(null);
@@ -120,22 +121,13 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
               <span className="text-[13px] font-semibold tracking-wider text-ink-soft uppercase">Total</span>
               <b className="font-display text-3xl font-bold tracking-tight">{eur(ticket.total)}</b>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => ejecutar(() => cobrarTicket(ticket.id, "efectivo"), () => router.push("/tpv"))}
-                disabled={ocupado || ticket.lineas.length === 0}
-                className="flex min-h-13 cursor-pointer items-center justify-center gap-2 rounded-xl bg-good text-[15px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-              >
-                <Banknote className="size-5" /> Efectivo
-              </button>
-              <button
-                onClick={() => ejecutar(() => cobrarTicket(ticket.id, "tarjeta"), () => router.push("/tpv"))}
-                disabled={ocupado || ticket.lineas.length === 0}
-                className="flex min-h-13 cursor-pointer items-center justify-center gap-2 rounded-xl bg-ink text-[15px] font-bold text-white transition-colors hover:bg-black disabled:opacity-40"
-              >
-                <CreditCard className="size-5" /> Tarjeta
-              </button>
-            </div>
+            <button
+              onClick={() => setCobrando(true)}
+              disabled={ocupado || ticket.lineas.length === 0}
+              className="flex min-h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-good text-[16px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              Cobrar {eur(ticket.total)}
+            </button>
             <button
               onClick={() => {
                 if (!confirmarAnular) {
@@ -237,6 +229,174 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
           </div>
         </div>
       </div>
+
+      {cobrando && (
+        <PanelCobro
+          ticketId={ticket.id}
+          total={ticket.total}
+          onCerrar={() => setCobrando(false)}
+          onListo={() => router.push("/tpv")}
+          onTicket={(id) => router.push(`/tpv/recibo/${id}?print=1`)}
+        />
+      )}
     </section>
+  );
+}
+
+function PanelCobro({
+  ticketId,
+  total,
+  onCerrar,
+  onListo,
+  onTicket,
+}: {
+  ticketId: string;
+  total: number;
+  onCerrar: () => void;
+  onListo: () => void;
+  onTicket: (id: string) => void;
+}) {
+  const [cobrando, startCobro] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [entregadoTxt, setEntregadoTxt] = useState("");
+  const [cobrado, setCobrado] = useState<{ id: string; cambio: number | null } | null>(null);
+
+  // Importes sugeridos de efectivo: justos + los billetes que superan el total.
+  const sugerencias = useMemo(() => {
+    const notas = [5, 10, 20, 50, 100].filter((n) => n > total);
+    return [Math.ceil(total * 100) / 100, ...notas].slice(0, 4);
+  }, [total]);
+
+  const entregado = parseFloat(entregadoTxt.replace(",", ".")) || 0;
+  const cambio = entregado >= total ? entregado - total : null;
+
+  function cobrar(metodo: "efectivo" | "tarjeta") {
+    setError(null);
+    startCobro(async () => {
+      const res = await cobrarTicket(ticketId, metodo, metodo === "efectivo" && entregado > 0 ? entregado : undefined);
+      if (!res.ok || !res.id) {
+        setError(res.error ?? "No se pudo cobrar");
+        return;
+      }
+      setCobrado({ id: res.id, cambio: metodo === "efectivo" ? cambio : null });
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 max-md:p-0 md:items-center"
+      onClick={cobrado ? undefined : onCerrar}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-card p-5 shadow-2xl max-md:rounded-b-none"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {cobrado ? (
+          // ── Cobrado ✓ ──
+          <div className="text-center">
+            <div className="mx-auto mb-3 grid size-14 place-items-center rounded-full bg-good-soft text-good">
+              <Check className="size-8" />
+            </div>
+            <div className="font-display text-[22px] font-bold tracking-tight">Cobrado</div>
+            {cobrado.cambio !== null && cobrado.cambio > 0 && (
+              <div className="mt-2 rounded-xl bg-warn-soft px-4 py-3">
+                <div className="text-[12.5px] font-semibold text-[#7A5106]">Cambio a devolver</div>
+                <div className="font-display text-[30px] font-bold text-[#7A5106]">{eur(cobrado.cambio)}</div>
+              </div>
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onTicket(cobrado.id)}
+                className="flex min-h-13 cursor-pointer items-center justify-center gap-2 rounded-xl border border-line bg-card text-[15px] font-bold transition-colors hover:border-brand"
+              >
+                <Printer className="size-5" /> Ticket
+              </button>
+              <button
+                onClick={onListo}
+                className="flex min-h-13 cursor-pointer items-center justify-center gap-2 rounded-xl bg-ink text-[15px] font-bold text-white transition-colors hover:bg-black"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        ) : (
+          // ── Cobro ──
+          <>
+            <div className="mb-4 flex items-center justify-between">
+              <span className="text-[13px] font-semibold tracking-wider text-ink-soft uppercase">A cobrar</span>
+              <button
+                onClick={onCerrar}
+                className="cursor-pointer rounded-lg p-1.5 text-ink-soft hover:bg-chip hover:text-ink"
+                aria-label="Cerrar"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="mb-4 text-center font-display text-[40px] font-bold tracking-tight">{eur(total)}</div>
+
+            {error && (
+              <div className="mb-3 rounded-xl bg-bad-soft px-3.5 py-2.5 text-[13px] font-semibold text-bad">{error}</div>
+            )}
+
+            {/* Efectivo con cambio */}
+            <div className="mb-3 rounded-xl border border-line p-3">
+              <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
+                <Banknote className="size-4 text-good" /> Efectivo
+              </div>
+              <div className="mb-2 grid grid-cols-4 gap-1.5">
+                {sugerencias.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setEntregadoTxt(String(s))}
+                    className={cn(
+                      "cursor-pointer rounded-lg border py-2 text-[13px] font-semibold transition-colors",
+                      entregado === s ? "border-good bg-good-soft text-good" : "border-line hover:border-good",
+                    )}
+                  >
+                    {s === sugerencias[0] ? "Justos" : eur(s, false)}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  inputMode="decimal"
+                  placeholder="otro importe…"
+                  value={entregadoTxt}
+                  onChange={(e) => setEntregadoTxt(e.target.value)}
+                  className="w-28 rounded-lg border border-line bg-card px-2.5 py-2 text-sm outline-none focus:border-brand"
+                />
+                {cambio !== null && cambio > 0 && (
+                  <span className="ml-auto text-[13px]">
+                    Cambio <b className="font-display text-[16px]">{eur(cambio)}</b>
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => cobrar("efectivo")}
+                disabled={cobrando}
+                className="mt-2.5 flex min-h-13 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-good text-[15px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                <Banknote className="size-5" /> Cobrar en efectivo
+              </button>
+            </div>
+
+            {/* Tarjeta */}
+            <button
+              onClick={() => cobrar("tarjeta")}
+              disabled={cobrando}
+              className="flex min-h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-ink text-[15px] font-bold text-white transition-colors hover:bg-black disabled:opacity-50"
+            >
+              <CreditCard className="size-5" /> Cobrar con tarjeta
+            </button>
+            <p className="mt-2 text-center text-[11.5px] text-ink-soft">
+              Con tarjeta: pasa el importe por el datáfono y confirma aquí.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

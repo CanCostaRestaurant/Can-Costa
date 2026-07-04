@@ -32,6 +32,11 @@ export async function guardarAjustes(datos: {
   ventasConTotal?: boolean;
   ivaVentasPct?: number;
   toleranciaConciliacion?: number;
+  nombreFiscal?: string;
+  cif?: string;
+  direccion?: string;
+  telefono?: string;
+  pieTicket?: string;
 }): Promise<Resultado> {
   const db = getDb();
   if (!db) return { ok: false, error: "Base de datos no configurada" };
@@ -51,6 +56,11 @@ export async function guardarAjustes(datos: {
     }
     set.toleranciaConciliacion = datos.toleranciaConciliacion.toFixed(2);
   }
+  if (datos.nombreFiscal !== undefined) set.nombreFiscal = datos.nombreFiscal.trim() || null;
+  if (datos.cif !== undefined) set.cif = datos.cif.trim() || null;
+  if (datos.direccion !== undefined) set.direccion = datos.direccion.trim() || null;
+  if (datos.telefono !== undefined) set.telefono = datos.telefono.trim() || null;
+  if (datos.pieTicket !== undefined) set.pieTicket = datos.pieTicket.trim() || "¡Gracias por su visita!";
 
   try {
     await conPlazo(db.update(schema.ajustes).set(set).where(eq(schema.ajustes.id, 1)));

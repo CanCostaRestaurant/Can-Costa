@@ -1525,9 +1525,25 @@ export type Ajustes = {
   ventasConTotal: boolean; // ventas con total o con base
   ivaVentasPct: number; // IVA automático de las ventas (10% hostelería)
   toleranciaConciliacion: number;
+  // Datos fiscales del local para el ticket de venta
+  nombreFiscal: string | null;
+  cif: string | null;
+  direccion: string | null;
+  telefono: string | null;
+  pieTicket: string;
 };
 
-const AJUSTES_DEFECTO: Ajustes = { conIva: true, ventasConTotal: true, ivaVentasPct: 10, toleranciaConciliacion: 1 };
+const AJUSTES_DEFECTO: Ajustes = {
+  conIva: true,
+  ventasConTotal: true,
+  ivaVentasPct: 10,
+  toleranciaConciliacion: 1,
+  nombreFiscal: null,
+  cif: null,
+  direccion: null,
+  telefono: null,
+  pieTicket: "¡Gracias por su visita!",
+};
 
 export async function getAjustes(): Promise<Ajustes> {
   const db = getDb();
@@ -1542,12 +1558,107 @@ export async function getAjustes(): Promise<Ajustes> {
           ventasConTotal: fila.ventasConTotal,
           ivaVentasPct: Number(fila.ivaVentasPct),
           toleranciaConciliacion: Number(fila.toleranciaConciliacion),
+          nombreFiscal: fila.nombreFiscal,
+          cif: fila.cif,
+          direccion: fila.direccion,
+          telefono: fila.telefono,
+          pieTicket: fila.pieTicket,
         };
       })(),
     );
   } catch (e) {
     logFallo("getAjustes", e);
     return AJUSTES_DEFECTO;
+  }
+}
+
+// Recibo (ticket de venta) de un ticket cobrado: datos del local + líneas +
+// desglose de IVA (el PVP ya lo incluye) + cambio si se pagó en efectivo.
+export type Recibo = {
+  id: string;
+  numero: number | null;
+  mesaNombre: string;
+  fechaHora: string;
+  metodo: "efectivo" | "tarjeta" | null;
+  comensales: number | null;
+  entregado: number | null;
+  cambio: number | null;
+  lineas: { descripcion: string; cantidad: number; precioUnitario: number; total: number }[];
+  base: number;
+  iva: number;
+  ivaPct: number;
+  total: number;
+  local: { nombre: string; cif: string | null; direccion: string | null; telefono: string | null; pie: string };
+};
+
+export async function getRecibo(id: string): Promise<Recibo | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    return await conPlazo(
+      (async (): Promise<Recibo | null> => {
+        const [ajustes, filas] = await Promise.all([
+          getAjustes(),
+          db
+            .select({ ticket: schema.tickets, mesaNombre: schema.mesas.nombre })
+            .from(schema.tickets)
+            .leftJoin(schema.mesas, eq(schema.tickets.mesaId, schema.mesas.id))
+            .where(eq(schema.tickets.id, id)),
+        ]);
+        const fila = filas[0];
+        if (!fila || fila.ticket.estado !== "cobrado") return null;
+
+        const lineas = await db
+          .select()
+          .from(schema.ticketLineas)
+          .where(eq(schema.ticketLineas.ticketId, id))
+          .orderBy(asc(schema.ticketLineas.createdAt));
+
+        const total = Number(fila.ticket.total ?? 0);
+        const ivaPct = ajustes.ivaVentasPct;
+        const base = total / (1 + ivaPct / 100);
+        const entregado = fila.ticket.entregado !== null ? Number(fila.ticket.entregado) : null;
+        const cobradoAt = fila.ticket.cobradoAt ?? fila.ticket.abiertoAt;
+
+        return {
+          id: fila.ticket.id,
+          numero: fila.ticket.numero,
+          mesaNombre: fila.mesaNombre ?? "Para llevar",
+          fechaHora: new Intl.DateTimeFormat("es-ES", {
+            timeZone: "Europe/Madrid",
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }).format(cobradoAt),
+          metodo: fila.ticket.metodoPago,
+          comensales: fila.ticket.comensales,
+          entregado,
+          cambio: entregado !== null ? entregado - total : null,
+          lineas: lineas.map((l) => ({
+            descripcion: l.descripcion,
+            cantidad: l.cantidad,
+            precioUnitario: Number(l.precioUnitario),
+            total: Number(l.total),
+          })),
+          base,
+          iva: total - base,
+          ivaPct,
+          total,
+          local: {
+            nombre: ajustes.nombreFiscal || "Can Costa",
+            cif: ajustes.cif,
+            direccion: ajustes.direccion,
+            telefono: ajustes.telefono,
+            pie: ajustes.pieTicket,
+          },
+        };
+      })(),
+    );
+  } catch (e) {
+    logFallo("getRecibo", e);
+    return null;
   }
 }
 

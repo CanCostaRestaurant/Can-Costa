@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Banknote, CreditCard, Tablet, Users } from "lucide-react";
+import { Banknote, CreditCard, Printer, Tablet, Users } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
 import { DatePicker } from "@/components/date-picker";
 import { type DesgloseDia, type VentaDia } from "@/lib/db/queries";
@@ -137,6 +137,7 @@ export function VentasClient({
                   </Th>
                   <Th>Pago</Th>
                   <Th>Total</Th>
+                  <Th> </Th>
                 </tr>
               </thead>
               <tbody>
@@ -153,6 +154,15 @@ export function VentasClient({
                       )}
                     </td>
                     <td className="px-3 py-2.5 font-display text-sm font-bold">{eur(t.total)}</td>
+                    <td className="px-2 py-2.5 text-right">
+                      <Link
+                        href={`/tpv/recibo/${t.id}`}
+                        title="Ver / reimprimir ticket"
+                        className="inline-grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft transition-colors hover:bg-chip hover:text-ink"
+                      >
+                        <Printer className="size-4" />
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>

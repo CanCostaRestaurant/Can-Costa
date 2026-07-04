@@ -141,7 +141,7 @@ export function FinaWidget() {
       <button
         onClick={() => setAbierto((v) => !v)}
         title="Fina — tu administrativa IA"
-        className="fixed right-5 bottom-5 z-50 grid size-14 cursor-pointer place-items-center rounded-full bg-brand text-white shadow-xl transition-transform hover:scale-105"
+        className="fixed right-5 bottom-5 z-50 grid size-14 cursor-pointer place-items-center rounded-full bg-brand text-white shadow-xl transition-transform hover:scale-105 print:hidden"
       >
         {abierto ? <X className="size-6" /> : <Sparkles className="size-6" />}
       </button>

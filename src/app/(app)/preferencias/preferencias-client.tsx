@@ -201,7 +201,75 @@ export function PreferenciasClient({ ajustes, usuarios }: { ajustes: Ajustes; us
           </div>
         </div>
       </div>
+
+      {/* ── Datos del ticket de venta ── */}
+      <div className="card mt-3.5 p-5.5">
+        <h3 className="font-display text-base font-bold tracking-tight">Datos del ticket</h3>
+        <p className="mt-1 mb-4 text-[12.5px] leading-relaxed text-ink-soft">
+          Salen impresos en el ticket que se da al cliente al cobrar en el TPV.
+        </p>
+        <div className="grid grid-cols-2 gap-3.5 max-md:grid-cols-1">
+          <CampoTicket
+            etiqueta="Nombre fiscal"
+            valor={ajustes.nombreFiscal}
+            placeholder="Can Costa SL"
+            onGuardar={(v) => ejecutar(() => guardarAjustes({ nombreFiscal: v }))}
+          />
+          <CampoTicket
+            etiqueta="CIF / NIF"
+            valor={ajustes.cif}
+            placeholder="B12345678"
+            onGuardar={(v) => ejecutar(() => guardarAjustes({ cif: v }))}
+          />
+          <CampoTicket
+            etiqueta="Dirección"
+            valor={ajustes.direccion}
+            placeholder="C/ Exemple 12, Barcelona"
+            onGuardar={(v) => ejecutar(() => guardarAjustes({ direccion: v }))}
+          />
+          <CampoTicket
+            etiqueta="Teléfono"
+            valor={ajustes.telefono}
+            placeholder="931 23 45 67"
+            onGuardar={(v) => ejecutar(() => guardarAjustes({ telefono: v }))}
+          />
+          <div className="col-span-2 max-md:col-span-1">
+            <CampoTicket
+              etiqueta="Mensaje de pie"
+              valor={ajustes.pieTicket}
+              placeholder="¡Gracias por su visita!"
+              onGuardar={(v) => ejecutar(() => guardarAjustes({ pieTicket: v }))}
+            />
+          </div>
+        </div>
+      </div>
     </section>
+  );
+}
+
+function CampoTicket({
+  etiqueta,
+  valor,
+  placeholder,
+  onGuardar,
+}: {
+  etiqueta: string;
+  valor: string | null;
+  placeholder: string;
+  onGuardar: (v: string) => void;
+}) {
+  const [texto, setTexto] = useState(valor ?? "");
+  return (
+    <label className="block text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
+      {etiqueta}
+      <input
+        value={texto}
+        placeholder={placeholder}
+        onChange={(e) => setTexto(e.target.value)}
+        onBlur={() => texto !== (valor ?? "") && onGuardar(texto)}
+        className="mt-1 block w-full rounded-xl border border-line bg-card px-3 py-2 font-body text-[14px] font-normal tracking-normal outline-none focus:border-brand"
+      />
+    </label>
   );
 }
 
