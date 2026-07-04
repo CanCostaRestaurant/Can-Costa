@@ -6,11 +6,19 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Banknote, Check, CreditCard, Lock, TriangleAlert } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
 import { DatePicker } from "@/components/date-picker";
-import { type CierreDia } from "@/lib/db/queries";
+import { type CierreDia, type CierreHistorico } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
 import { cerrarCaja } from "./actions";
 
-export function CierreClient({ datos, hoy }: { datos: CierreDia; hoy: string }) {
+export function CierreClient({
+  datos,
+  historico,
+  hoy,
+}: {
+  datos: CierreDia;
+  historico: CierreHistorico[];
+  hoy: string;
+}) {
   const router = useRouter();
   const [ocupado, startAccion] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -227,7 +235,82 @@ export function CierreClient({ datos, hoy }: { datos: CierreDia; hoy: string }) 
           )}
         </div>
       )}
+
+      {/* ── Historial de cierres ── */}
+      {historico.length > 0 && (
+        <div className="card mt-3.5 overflow-hidden">
+          <div className="px-5 pt-4.5 pb-3 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
+            Historial de cierres
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <ThHist>Día</ThHist>
+                  <ThHist>Efectivo</ThHist>
+                  <ThHist>Datáfono</ThHist>
+                  <ThHist>Fondo dejado</ThHist>
+                  <ThHist>Cerró</ThHist>
+                  <ThHist>Notas</ThHist>
+                </tr>
+              </thead>
+              <tbody>
+                {historico.map((h, i) => (
+                  <tr
+                    key={h.fecha}
+                    onClick={() => router.push(h.fecha === hoy ? "/tpv/cierre" : `/tpv/cierre?dia=${h.fecha}`)}
+                    className={cn(
+                      "anim-in cursor-pointer border-b border-line transition-colors last:border-none hover:bg-hover",
+                      h.fecha === datos.fecha && "bg-hover",
+                    )}
+                    style={{ animationDelay: `${i * 40}ms` }}
+                  >
+                    <td className="px-5 py-2.5 text-sm font-semibold whitespace-nowrap">{h.fechaLegible}</td>
+                    <td className="px-5 py-2.5">
+                      <CeldaCuadre contado={h.efectivoContado} dif={h.difEfectivo} />
+                    </td>
+                    <td className="px-5 py-2.5">
+                      <CeldaCuadre contado={h.datafono} dif={h.difTarjeta} />
+                    </td>
+                    <td className="px-5 py-2.5 font-display text-sm font-bold whitespace-nowrap">
+                      {eur(h.fondoSiguiente)}
+                    </td>
+                    <td className="px-5 py-2.5 text-sm text-ink-soft">{h.cerradoPor ?? "—"}</td>
+                    <td className="max-w-48 truncate px-5 py-2.5 text-[13px] text-ink-soft" title={h.notas ?? ""}>
+                      {h.notas ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+function ThHist({ children }: { children: React.ReactNode }) {
+  return (
+    <th className="border-b border-line px-5 py-2 text-left text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
+      {children}
+    </th>
+  );
+}
+
+function CeldaCuadre({ contado, dif }: { contado: number; dif: number }) {
+  const cuadra = Math.abs(dif) < 0.005;
+  return (
+    <span className="flex items-center gap-2 whitespace-nowrap">
+      <b className="font-display text-sm font-bold">{eur(contado)}</b>
+      {cuadra ? (
+        <Chip tone="good">✓</Chip>
+      ) : (
+        <Chip tone={Math.abs(dif) > 5 ? "bad" : "warn"}>
+          {dif > 0 ? "+" : "−"}{eur(Math.abs(dif), false)}
+        </Chip>
+      )}
+    </span>
   );
 }
 

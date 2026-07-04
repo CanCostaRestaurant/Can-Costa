@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { Segmentado } from "@/components/segmentado";
 import { type CategoriaDesglose } from "@/lib/db/queries";
 import { cn, eur, pct } from "@/lib/utils";
 
@@ -43,19 +44,15 @@ export function DesgloseTabs({
         Desglose <span className="capitalize">{etiquetaMes}</span>
       </h3>
 
-      <div className="mt-3.5 mb-5 flex rounded-xl bg-chip p-1">
-        {(["resultados", "gastos", "ventas"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              "flex-1 cursor-pointer rounded-lg px-3 py-1.5 text-[13px] font-semibold capitalize transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
-              tab === t ? "bg-card shadow-sm" : "text-ink-soft hover:text-ink",
-            )}
-          >
-            {t}
-          </button>
-        ))}
+      <div className="mt-3.5 mb-5">
+        <Segmentado
+          tono="claro"
+          opciones={(["resultados", "gastos", "ventas"] as const).map((t) => ({
+            etiqueta: <span className="capitalize">{t}</span>,
+            onClick: () => setTab(t),
+            activo: tab === t,
+          }))}
+        />
       </div>
 
       <div key={tab} className="anim-in">
@@ -225,9 +222,11 @@ function Desglose({
             key={t.nombre}
             onClick={onClickTrozo ? () => onClickTrozo(t.nombre) : undefined}
             className={cn(
-              "flex items-center gap-2 text-[12.5px]",
-              onClickTrozo && "-mx-1.5 cursor-pointer rounded-lg px-1.5 py-1 transition-colors hover:bg-hover",
+              "anim-in flex items-center gap-2 text-[12.5px]",
+              onClickTrozo &&
+                "-mx-1.5 cursor-pointer rounded-lg px-1.5 py-1 transition-all hover:translate-x-0.5 hover:bg-hover active:scale-[0.99]",
             )}
+            style={{ animationDelay: `${140 + i * 60}ms` }}
           >
             <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: COLORES[i % COLORES.length] }} />
             <span className="min-w-0 flex-1 truncate font-semibold">{t.nombre}</span>
@@ -256,7 +255,8 @@ function Donut({ trozos }: { trozos: Trozo[] }) {
           strokeWidth="6.5"
           strokeDasharray={`${Math.max(t.pct - 0.6, 0.1)} ${100 - Math.max(t.pct - 0.6, 0.1)}`}
           strokeDashoffset={-inicios[i] - 0.3}
-          className="[transition:stroke-dasharray_0.5s_ease]"
+          className="anim-fade [transition:stroke-dasharray_0.5s_ease]"
+          style={{ animationDelay: `${120 + i * 90}ms` }}
         />
       ))}
     </svg>

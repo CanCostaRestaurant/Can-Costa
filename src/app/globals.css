@@ -82,3 +82,17 @@ body {
   transform-origin: top;
   animation: pop-in 0.16s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Fade puro (segmentos del donut, elementos SVG que no admiten translate). */
+@utility anim-fade {
+  animation: fade-in 0.5s ease both;
+}

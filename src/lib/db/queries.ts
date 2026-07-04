@@ -2385,3 +2385,56 @@ export async function getCierreDia(fecha: string): Promise<CierreDia> {
     return vacio;
   }
 }
+
+// ---------------------------------------------------------------------
+// Historico de cierres de caja
+// ---------------------------------------------------------------------
+
+export type CierreHistorico = {
+  fecha: string; // ISO, para navegar a ?dia=
+  fechaLegible: string;
+  efectivoContado: number;
+  efectivoEsperado: number; // fondo anterior + ventas efectivo (snapshot)
+  difEfectivo: number;
+  datafono: number;
+  tarjetaEsperada: number;
+  difTarjeta: number;
+  fondoSiguiente: number;
+  cerradoPor: string | null;
+  notas: string | null;
+};
+
+export async function getCierresHistorico(limite = 30): Promise<CierreHistorico[]> {
+  const db = getDb();
+  if (!db) return [];
+  try {
+    return await conPlazo(
+      (async (): Promise<CierreHistorico[]> => {
+        const filas = await db
+          .select()
+          .from(schema.cierresCaja)
+          .orderBy(desc(schema.cierresCaja.fecha))
+          .limit(limite);
+        return filas.map((c) => {
+          const esperadoCajon = Number(c.fondoAnterior) + Number(c.efectivoEsperado);
+          return {
+            fecha: c.fecha,
+            fechaLegible: fechaLegible(c.fecha),
+            efectivoContado: Number(c.efectivoContado),
+            efectivoEsperado: esperadoCajon,
+            difEfectivo: Number(c.efectivoContado) - esperadoCajon,
+            datafono: Number(c.datafono),
+            tarjetaEsperada: Number(c.tarjetaEsperada),
+            difTarjeta: Number(c.datafono) - Number(c.tarjetaEsperada),
+            fondoSiguiente: Number(c.fondoSiguiente),
+            cerradoPor: c.cerradoPor,
+            notas: c.notas,
+          };
+        });
+      })(),
+    );
+  } catch (e) {
+    logFallo("getCierresHistorico", e);
+    return [];
+  }
+}

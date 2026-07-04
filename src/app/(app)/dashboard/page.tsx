@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Info } from "lucide-react";
 import { getDashboardMes, type ModoDashboard } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
+import { CifraAnimada } from "@/components/cifra-animada";
+import { Segmentado } from "@/components/segmentado";
 import { DesgloseTabs } from "./desglose-tabs";
 
 export const dynamic = "force-dynamic";
@@ -99,26 +101,13 @@ export default async function DashboardPage({
               modo dashboard «a tiempo real».
             </span>
           </InfoTip>
-          <div className="flex rounded-xl border border-line bg-card p-1">
-            <Link
-              href={href({ modo: "general" })}
-              className={cn(
-                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
-                modo === "general" ? "bg-ink text-white" : "text-ink-soft hover:bg-hover hover:text-ink",
-              )}
-            >
-              General
-            </Link>
-            <Link
-              href={href({ modo: "real" })}
-              className={cn(
-                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
-                modo === "real" ? "bg-ink text-white" : "text-ink-soft hover:bg-hover hover:text-ink",
-              )}
-            >
-              A tiempo real
-            </Link>
-          </div>
+          <Segmentado
+            tono="oscuro"
+            opciones={[
+              { etiqueta: "General", href: href({ modo: "general" }), activo: modo === "general" },
+              { etiqueta: "A tiempo real", href: href({ modo: "real" }), activo: modo === "real" },
+            ]}
+          />
           <InfoTip lado="izquierda">
             <b className="mb-1 block">A tiempo real</b>
             En las gráficas a tiempo real ves el importe de:
@@ -145,26 +134,13 @@ export default async function DashboardPage({
       <div className="card mb-3.5 flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-3">
         <div className="flex items-center gap-3">
           <span className="text-[11.5px] font-bold tracking-widest text-ink-soft uppercase">Actividad</span>
-          <div className="flex rounded-lg bg-chip p-0.5">
-            <Link
-              href={href({ act: "mensual" })}
-              className={cn(
-                "rounded-md px-3 py-1 text-[12.5px] font-semibold transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
-                !semanal ? "bg-card shadow-sm" : "text-ink-soft hover:text-ink",
-              )}
-            >
-              Mensual
-            </Link>
-            <Link
-              href={href({ act: "semanal" })}
-              className={cn(
-                "rounded-md px-3 py-1 text-[12.5px] font-semibold transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
-                semanal ? "bg-card shadow-sm" : "text-ink-soft hover:text-ink",
-              )}
-            >
-              Semanal
-            </Link>
-          </div>
+          <Segmentado
+            tono="claro"
+            opciones={[
+              { etiqueta: "Mensual", href: href({ act: "mensual" }), activo: !semanal },
+              { etiqueta: "Semanal", href: href({ act: "semanal" }), activo: semanal },
+            ]}
+          />
         </div>
 
         <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -182,7 +158,9 @@ export default async function DashboardPage({
                     >
                       ‹
                     </Link>
-                    <b className="text-[13.5px] font-bold whitespace-nowrap">{etiquetaCorta(m)}</b>
+                    <b key={m} className="anim-pop text-[13.5px] font-bold whitespace-nowrap">
+                      {etiquetaCorta(m)}
+                    </b>
                     {sumarMeses(mes, 1) <= mesActual ? (
                       <Link
                         href={href({ mes: sumarMeses(mes, 1) })}
@@ -219,14 +197,14 @@ export default async function DashboardPage({
         <Kpi
           etiqueta="Gastos"
           mes={`${etiquetaCorta(mes)} · ${d.conIva ? "con IVA" : "sin IVA"}`}
-          valor={eur(d.gastos)}
+          valor={d.gastos}
         />
         <Kpi
           etiqueta="Ventas"
           mes={`${etiquetaCorta(mes)} · ${d.ventasConTotal ? "total" : "base"}`}
-          valor={eur(d.ventas)}
+          valor={d.ventas}
         />
-        <Kpi etiqueta="Margen" mes={etiquetaCorta(mes)} valor={eur(d.margen)} destacado />
+        <Kpi etiqueta="Margen" mes={etiquetaCorta(mes)} valor={d.margen} destacado />
       </div>
 
       <div className="grid grid-cols-[1.55fr_1fr] items-start gap-3.5 max-lg:grid-cols-1">
@@ -262,25 +240,25 @@ export default async function DashboardPage({
             ))}
             {/* Barras */}
             <div className={cn("absolute inset-y-0 right-0 left-12 flex items-end", semanal ? "gap-6 px-6" : "gap-[3px] px-0.5")}>
-              {barras.map((b) => (
+              {barras.map((b, i) => (
                 <div
                   key={b.etiqueta}
                   title={`${semanal ? b.etiqueta : `Día ${b.etiqueta}`} — ventas ${eur(b.ventas)} · gastos ${eur(b.gastos)}`}
-                  className="flex h-full flex-1 items-end justify-center gap-px"
+                  className="group flex h-full flex-1 items-end justify-center gap-px"
                 >
                   <div
                     className={cn(
-                      "w-full rounded-t-[3px] bg-[#9CBE8C] transition-[height] duration-500 ease-out anim-grow",
+                      "anim-grow w-full rounded-t-[3px] bg-[#9CBE8C] transition-[height,filter] duration-500 ease-out group-hover:brightness-90",
                       semanal ? "max-w-9" : "max-w-2.5",
                     )}
-                    style={{ height: `${(b.ventas / techo) * 100}%` }}
+                    style={{ height: `${(b.ventas / techo) * 100}%`, animationDelay: `${i * 16}ms` }}
                   />
                   <div
                     className={cn(
-                      "w-full rounded-t-[3px] bg-ink transition-[height] duration-500 ease-out anim-grow",
+                      "anim-grow w-full rounded-t-[3px] bg-ink transition-[height,filter] duration-500 ease-out group-hover:brightness-150",
                       semanal ? "max-w-9" : "max-w-2.5",
                     )}
-                    style={{ height: `${(b.gastos / techo) * 100}%` }}
+                    style={{ height: `${(b.gastos / techo) * 100}%`, animationDelay: `${i * 16 + 40}ms` }}
                   />
                 </div>
               ))}
@@ -330,13 +308,13 @@ function Kpi({
 }: {
   etiqueta: string;
   mes: string;
-  valor: string;
+  valor: number;
   destacado?: boolean;
 }) {
   return (
     <div
       className={cn(
-        "card p-5 transition-shadow duration-300 hover:shadow-lift",
+        "card p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lift",
         destacado && "bg-ink text-white",
       )}
     >
@@ -351,7 +329,14 @@ function Kpi({
         </span>
         <span className={cn("text-[11.5px]", destacado ? "text-white/50" : "text-ink-soft/70")}>{mes}</span>
       </div>
-      <div className="mt-2 font-display text-[30px] font-bold tracking-tight">{valor}</div>
+      <div
+        className={cn(
+          "mt-2 font-display text-[30px] font-bold tracking-tight",
+          destacado && valor < 0 && "text-[#FF9B8A]",
+        )}
+      >
+        <CifraAnimada valor={valor} />
+      </div>
     </div>
   );
 }
