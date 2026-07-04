@@ -49,7 +49,6 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
     items: [
       { href: "/", label: "Home", icon: Home },
       { href: "/dashboard", label: "Dashboard", icon: ChartColumn },
-      { href: "/ventas", label: "Ventas", icon: Coins },
       { href: "/escandallos", label: "Escandallos", icon: ChefHat },
     ],
   },
@@ -58,6 +57,7 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
     titulo: "Gestión",
     items: [
       { href: "/tpv", label: "TPV", icon: Tablet },
+      { href: "/ventas", label: "Ventas", icon: Coins },
       { href: "/reservas", label: "Reservas", icon: CalendarDays },
       { href: "/clientes", label: "Clientes", icon: BookUser, chip: "nuevo" },
     ],
