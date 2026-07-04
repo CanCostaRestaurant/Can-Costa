@@ -10,16 +10,20 @@ export function SeccionesDocumentos({
   activa,
   mostrarRecibidas = true,
   mostrarEmitidas = true,
+  mostrarBanco = false,
 }: {
-  activa: "recibidas" | "emitidas";
+  activa: "recibidas" | "emitidas" | "banco";
   mostrarRecibidas?: boolean;
   mostrarEmitidas?: boolean;
+  mostrarBanco?: boolean;
 }) {
-  if (!mostrarRecibidas || !mostrarEmitidas) return null;
   const tabs = [
-    { id: "recibidas", label: "Recibidas", href: "/documentos" },
-    { id: "emitidas", label: "Emitidas", href: "/facturacion" },
-  ] as const;
+    mostrarRecibidas && { id: "recibidas", label: "Recibidas", href: "/documentos" },
+    mostrarEmitidas && { id: "emitidas", label: "Emitidas", href: "/facturacion" },
+    mostrarBanco && { id: "banco", label: "Banco", href: "/banco" },
+  ].filter(Boolean) as { id: string; label: string; href: string }[];
+  // Solo tiene sentido el conmutador si el rol puede ver al menos dos secciones.
+  if (tabs.length < 2) return null;
   return (
     <div className="mb-4 flex w-fit gap-1 rounded-xl bg-chip p-1">
       {tabs.map((t) => (

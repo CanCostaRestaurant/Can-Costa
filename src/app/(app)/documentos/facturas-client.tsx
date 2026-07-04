@@ -178,7 +178,7 @@ export function FacturasClient({
 
   return (
     <section className="anim-in">
-      <SeccionesDocumentos activa="recibidas" mostrarEmitidas={puedeEmitidas} />
+      <SeccionesDocumentos activa="recibidas" mostrarEmitidas={puedeEmitidas} mostrarBanco={puedeEmitidas} />
       <PageHead
         titulo="Facturas y albaranes"
         subtitulo="Revisa la bandeja y valida: los precios se actualizan solos"

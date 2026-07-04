@@ -20,7 +20,7 @@ const ACCESO: Record<RolUsuario, { permite: string[]; bloquea?: string[]; inicio
   admin: null,
   documentos: { permite: ["/documentos"], inicio: "/documentos" },
   gestor: {
-    permite: ["/", "/dashboard", "/ventas", "/caja", "/facturacion", "/documentos", "/productos", "/proveedores", "/incidencias", "/conciliacion", "/personal"],
+    permite: ["/", "/dashboard", "/ventas", "/caja", "/facturacion", "/documentos", "/banco", "/productos", "/proveedores", "/incidencias", "/conciliacion", "/personal"],
     inicio: "/dashboard",
   },
   chef: { permite: ["/escandallos", "/productos"], inicio: "/escandallos" },
