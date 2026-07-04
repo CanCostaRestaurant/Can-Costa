@@ -2,11 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Trash2 } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { type Producto } from "@/lib/mock";
 import { cn, eur } from "@/lib/utils";
-import { crearProducto, fijarPrecioPactado } from "./actions";
+import { crearProducto, darDeBajaProducto, fijarPrecioPactado } from "./actions";
 
 const FAMILIAS_NUEVO: { valor: Producto["familia"]; label: string }[] = [
   { valor: "bebida", label: "Bebidas" },
@@ -319,6 +319,8 @@ function Sparkline({ hist, variacion }: { hist: number[]; variacion: number }) {
 function HistPanel({ producto: p }: { producto: Producto }) {
   const router = useRouter();
   const [, startPactado] = useTransition();
+  const [dandoBaja, startBaja] = useTransition();
+  const [confirmarBaja, setConfirmarBaja] = useState(false);
   const [textoPactado, setTextoPactado] = useState(
     p.precioPactado !== null && p.precioPactado !== undefined ? String(p.precioPactado) : "",
   );
@@ -428,6 +430,35 @@ function HistPanel({ producto: p }: { producto: Producto }) {
         className="mt-4 rounded-xl bg-brand-soft px-3.5 py-3 text-[13px] leading-relaxed text-[#8C3A22]"
         dangerouslySetInnerHTML={{ __html: p.nota }}
       />
+
+      <div className="mt-4 border-t border-line pt-3.5">
+        <button
+          onClick={() => {
+            if (!confirmarBaja) {
+              setConfirmarBaja(true);
+              setTimeout(() => setConfirmarBaja(false), 4000);
+              return;
+            }
+            startBaja(async () => {
+              const res = await darDeBajaProducto(p.id);
+              if (res.ok) router.refresh();
+            });
+          }}
+          disabled={dandoBaja}
+          className={cn(
+            "flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-4 py-2 text-[13px] font-semibold transition-colors disabled:opacity-50",
+            confirmarBaja
+              ? "border-bad bg-bad text-white"
+              : "border-line text-ink-soft hover:border-bad hover:text-bad",
+          )}
+        >
+          <Trash2 className="size-4" />
+          {dandoBaja ? "Dando de baja…" : confirmarBaja ? "¿Seguro? Dar de baja" : "Dar de baja este producto"}
+        </button>
+        <p className="mt-1.5 text-center text-[11px] leading-snug text-ink-soft">
+          Deja de listarse y de salir en los escandallos nuevos, pero no toca los platos que ya lo usan.
+        </p>
+      </div>
     </div>
   );
 }

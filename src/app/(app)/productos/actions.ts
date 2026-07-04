@@ -57,6 +57,29 @@ export async function crearProducto(datos: {
   }
 }
 
+// Baja de un producto (soft-delete): deja de listarse y de salir en el
+// buscador del escandallo, pero conserva su histórico y NO rompe los platos
+// que ya lo usan (su coste sigue calculándose). Reversible en BD (activo=true).
+export async function darDeBajaProducto(productoId: string): Promise<{ ok: boolean; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "Base de datos no configurada" };
+  try {
+    await conPlazo(
+      db
+        .update(schema.productos)
+        .set({ activo: false, updatedAt: new Date() })
+        .where(eq(schema.productos.id, productoId)),
+    );
+    revalidatePath("/productos");
+    revalidatePath("/escandallos");
+    return { ok: true };
+  } catch (e) {
+    console.error("[darDeBajaProducto] falló:", e instanceof Error ? e.message : e);
+    resetDb();
+    return { ok: false, error: "La base de datos no responde ahora mismo" };
+  }
+}
+
 // Precio pactado/tarifado con el proveedor: si está fijado, manda sobre el
 // precio de referencia para decidir si la última compra va cara (rojo/verde).
 export async function fijarPrecioPactado(
