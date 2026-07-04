@@ -34,7 +34,7 @@ export function clasesMesaPlano(mesa: { capacidad: number; forma: string }): str
   return `${tam} ${forma}`;
 }
 
-export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
+export function MapaClient({ mapa, esTablet = false }: { mapa: MapaMesasTpv; esTablet?: boolean }) {
   const router = useRouter();
   const [abriendo, startAbrir] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -102,24 +102,30 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
                 <LayoutGrid className="size-3.5" /> Lista
               </button>
             </div>
-            <Link
-              href="/ventas"
-              className="card flex items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap"
-            >
-              <ChartColumn className="size-4 text-ink-soft" /> Ventas
-            </Link>
-            <Link
-              href="/tpv/mesas"
-              className="card flex items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap"
-            >
-              <Settings2 className="size-4 text-ink-soft" /> Distribución
-            </Link>
-            <Link
-              href="/caja"
-              className="flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap text-white transition-colors hover:bg-black"
-            >
-              <Lock className="size-4" /> Cierre de caja
-            </Link>
+            {/* En modo tablet estos accesos ya están en la barra superior;
+                además Distribución (editar el plano) no es para camareros. */}
+            {!esTablet && (
+              <>
+                <Link
+                  href="/ventas"
+                  className="card flex items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap"
+                >
+                  <ChartColumn className="size-4 text-ink-soft" /> Ventas
+                </Link>
+                <Link
+                  href="/tpv/mesas"
+                  className="card flex items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap"
+                >
+                  <Settings2 className="size-4 text-ink-soft" /> Distribución
+                </Link>
+                <Link
+                  href="/caja"
+                  className="flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap text-white transition-colors hover:bg-black"
+                >
+                  <Lock className="size-4" /> Cierre de caja
+                </Link>
+              </>
+            )}
           </div>
         }
       />

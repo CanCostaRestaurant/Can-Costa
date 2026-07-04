@@ -14,8 +14,9 @@ function esPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
-// null = acceso a todo; si no, lista de prefijos permitidos + adónde mandar el resto.
-const ACCESO: Record<RolUsuario, { permite: string[]; inicio: string } | null> = {
+// null = acceso a todo; si no, prefijos permitidos (+ bloquea = excepciones
+// dentro de lo permitido) + adónde mandar el resto.
+const ACCESO: Record<RolUsuario, { permite: string[]; bloquea?: string[]; inicio: string } | null> = {
   admin: null,
   documentos: { permite: ["/documentos"], inicio: "/documentos" },
   gestor: {
@@ -24,14 +25,19 @@ const ACCESO: Record<RolUsuario, { permite: string[]; inicio: string } | null> =
   },
   chef: { permite: ["/escandallos", "/productos"], inicio: "/escandallos" },
   // Modo tablet: cobrar (TPV), el día (Ventas), cerrar la caja (Caja) y
-  // emitir factura a quien la pida (Facturación).
-  tpv: { permite: ["/tpv", "/ventas", "/caja", "/facturacion"], inicio: "/tpv" },
+  // emitir factura a quien la pida (Facturación). Pero NO editar el plano
+  // del local (/tpv/mesas): eso es configuración, no para camareros.
+  tpv: { permite: ["/tpv", "/ventas", "/caja", "/facturacion"], bloquea: ["/tpv/mesas"], inicio: "/tpv" },
 };
+
+const empataPrefijo = (p: string, pathname: string) =>
+  p === "/" ? pathname === "/" : pathname === p || pathname.startsWith(p + "/");
 
 function puedeVer(rol: RolUsuario, pathname: string): boolean {
   const regla = ACCESO[rol];
   if (!regla) return true;
-  return regla.permite.some((p) => (p === "/" ? pathname === "/" : pathname === p || pathname.startsWith(p + "/")));
+  if (regla.bloquea?.some((p) => empataPrefijo(p, pathname))) return false;
+  return regla.permite.some((p) => empataPrefijo(p, pathname));
 }
 
 export async function proxy(req: NextRequest) {

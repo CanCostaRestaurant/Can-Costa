@@ -2,18 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Coins, Lock, LogOut, Tablet } from "lucide-react";
+import { Coins, LogOut, Tablet, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { cerrarSesion } from "@/app/login/actions";
 
 // Barra superior del MODO TABLET (rol tpv): solo lo que hace falta en sala —
-// TPV para cobrar, Ventas con el cierre de caja, y salir. Sin sidebar.
+// cobrar (TPV), el día (Ventas), la caja/cierre (Caja) y salir. Sin sidebar.
 export function BarraTablet({ nombre }: { nombre: string }) {
   const pathname = usePathname();
 
   const enlaces = [
     { href: "/tpv", etiqueta: "TPV", icono: Tablet },
     { href: "/ventas", etiqueta: "Ventas", icono: Coins },
+    { href: "/caja", etiqueta: "Caja", icono: Wallet },
   ];
 
   return (
@@ -24,7 +25,7 @@ export function BarraTablet({ nombre }: { nombre: string }) {
 
       <nav className="ml-2 flex gap-1.5">
         {enlaces.map(({ href, etiqueta, icono: Icono }) => {
-          const activo = pathname === href || pathname.startsWith(href + "/") || (href === "/tpv" && pathname.startsWith("/tpv"));
+          const activo = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
@@ -38,12 +39,6 @@ export function BarraTablet({ nombre }: { nombre: string }) {
             </Link>
           );
         })}
-        <Link
-          href="/ventas"
-          className="flex min-h-11 items-center gap-2 rounded-xl px-4 text-[14.5px] font-semibold text-ink-soft transition-all hover:bg-chip hover:text-ink active:scale-[0.97]"
-        >
-          <Lock className="size-4" /> Cierre
-        </Link>
       </nav>
 
       <span className="ml-auto text-[13px] font-semibold text-ink-soft">{nombre}</span>
