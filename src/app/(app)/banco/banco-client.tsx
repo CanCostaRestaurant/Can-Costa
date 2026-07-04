@@ -100,7 +100,7 @@ export function BancoClient({
 
   return (
     <section className="anim-in">
-      <SeccionesDocumentos activa="banco" mostrarRecibidas={mostrarRecibidas} mostrarEmitidas={mostrarEmitidas} />
+      <SeccionesDocumentos activa="banco" mostrarRecibidas={mostrarRecibidas} mostrarEmitidas={mostrarEmitidas} mostrarBanco />
       <PageHead
         titulo="Banco · pagos a proveedores"
         subtitulo="Sube el extracto y la IA lo cruza con tus facturas para confirmar qué está pagado"
