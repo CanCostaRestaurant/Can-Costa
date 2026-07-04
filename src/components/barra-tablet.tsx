@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Coins, LogOut, Tablet, Wallet } from "lucide-react";
+import { Coins, FileText, LogOut, Tablet, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { cerrarSesion } from "@/app/login/actions";
 
 // Barra superior del MODO TABLET (rol tpv): solo lo que hace falta en sala —
-// cobrar (TPV), el día (Ventas), la caja/cierre (Caja) y salir. Sin sidebar.
+// cobrar (TPV), el día (Ventas), la caja/cierre (Caja), las facturas emitidas
+// (Facturas: se generan desde el recibo y se consultan/reimprimen aquí) y salir.
+// Sin sidebar.
 export function BarraTablet({ nombre }: { nombre: string }) {
   const pathname = usePathname();
 
@@ -15,6 +17,7 @@ export function BarraTablet({ nombre }: { nombre: string }) {
     { href: "/tpv", etiqueta: "TPV", icono: Tablet },
     { href: "/ventas", etiqueta: "Ventas", icono: Coins },
     { href: "/caja", etiqueta: "Caja", icono: Wallet },
+    { href: "/facturacion", etiqueta: "Facturas", icono: FileText },
   ];
 
   return (
