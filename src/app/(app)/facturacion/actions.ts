@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { and, eq, max } from "drizzle-orm";
 import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
-import { getAjustes } from "@/lib/db/queries";
+import { getAjustes, getFacturaVenta } from "@/lib/db/queries";
 import { COOKIE_SESION, verificarSesion } from "@/lib/auth";
+import { enviarCorreo } from "@/lib/correo/enviar";
+import { generarPdfFactura, nombrePdfFactura } from "@/lib/pdf/factura-pdf";
 
 type Resultado = { ok: boolean; error?: string; id?: string; numero?: string };
 
@@ -147,6 +149,64 @@ export async function emitirFactura(datos: {
     resetDb();
     return { ok: false, error: "La base de datos no responde ahora mismo" };
   }
+}
+
+// Envía la factura por correo con el PDF adjunto, desde la misma cuenta Gmail
+// del buzón (SMTP con IMAP_USER/IMAP_PASSWORD): sin abrir el correo ni nada.
+export async function enviarFacturaPorCorreo(datos: { id: string; email: string }): Promise<Resultado> {
+  const email = datos.email?.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    return { ok: false, error: "Revisa el correo: no parece una dirección válida" };
+  }
+
+  const factura = await getFacturaVenta(datos.id);
+  if (!factura) return { ok: false, error: "La factura no existe" };
+  if (factura.estado === "anulada") return { ok: false, error: "Esta factura está anulada: no se puede enviar" };
+
+  const pdf = generarPdfFactura(factura);
+  const primerNombre = factura.cliente.nombre.split(" ")[0];
+  const html = `
+  <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#F7F3EC;border-radius:16px;padding:28px">
+    <h2 style="margin:0 0 4px;color:#1c1917">Tu factura de ${factura.local.nombre}</h2>
+    <p style="margin:0 0 20px;color:#57534e">Hola${primerNombre ? ` ${primerNombre}` : ""}, te adjuntamos la factura en PDF. ¡Gracias por tu visita!</p>
+    <div style="background:#fff;border-radius:12px;padding:18px 20px;margin-bottom:20px">
+      <p style="margin:0 0 6px">Factura <b>${factura.numero}</b> · ${factura.fechaLegible}</p>
+      <p style="margin:0 0 6px;color:#57534e">${factura.cliente.nombre}${factura.cliente.cif ? ` · NIF ${factura.cliente.cif}` : ""}</p>
+      <p style="margin:0;font-size:18px"><b>Total: ${factura.total.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</b> <span style="color:#57534e;font-size:13px">(IVA incluido)</span></p>
+    </div>
+    <p style="margin:0;color:#78716c;font-size:13px">
+      ${[factura.local.direccion, factura.local.telefono ? `Tel ${factura.local.telefono}` : null].filter(Boolean).join(" · ")}
+    </p>
+  </div>`;
+
+  const res = await enviarCorreo({
+    para: email,
+    asunto: `Factura ${factura.numero} — ${factura.local.nombre}`,
+    html,
+    nombreRemitente: factura.local.nombre,
+    adjuntos: [{ nombre: nombrePdfFactura(factura.numero), contenido: pdf, tipo: "application/pdf" }],
+  });
+  if (!res.enviado) return { ok: false, error: res.motivo ?? "No se pudo enviar el correo" };
+
+  // Registrar a quién y cuándo se envió (best-effort: el correo ya salió).
+  const db = getDb();
+  if (db) {
+    try {
+      await conPlazo(
+        db
+          .update(schema.facturasVenta)
+          .set({ enviadaA: email, enviadaAt: new Date(), updatedAt: new Date() })
+          .where(eq(schema.facturasVenta.id, datos.id)),
+      );
+    } catch (e) {
+      console.error("[facturacion] no se pudo registrar el envío:", e instanceof Error ? e.message : e);
+      resetDb();
+    }
+  }
+
+  revalidatePath(`/facturacion/${datos.id}`);
+  revalidatePath("/facturacion");
+  return { ok: true };
 }
 
 // Anula una factura (no se borra: la numeración no puede tener huecos). Queda

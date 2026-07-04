@@ -469,6 +469,8 @@ export const facturasVenta = pgTable(
     total: numeric("total", { precision: 12, scale: 2 }).notNull(),
     estado: facturaVentaEstadoEnum("estado").notNull().default("emitida"),
     emitidaPor: text("emitida_por"),
+    enviadaA: text("enviada_a"), // último correo al que se envió
+    enviadaAt: timestamp("enviada_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

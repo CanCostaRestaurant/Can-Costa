@@ -4,11 +4,12 @@
 // local), cliente, líneas y desglose de base + IVA + total. Se puede imprimir
 // (o "Guardar como PDF") y anular sin borrar (la numeración no tiene huecos).
 import { useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Ban, Printer } from "lucide-react";
+import { ArrowLeft, Ban, Check, Mail, Printer, Send, X } from "lucide-react";
 import { type FacturaVenta } from "@/lib/db/queries";
 import { eur } from "@/lib/utils";
-import { anularFactura } from "../actions";
+import { anularFactura, enviarFacturaPorCorreo } from "../actions";
 
 export function FacturaView({ factura }: { factura: FacturaVenta }) {
   const router = useRouter();
@@ -16,11 +17,34 @@ export function FacturaView({ factura }: { factura: FacturaVenta }) {
   const [ocupado, start] = useTransition();
   const anulada = factura.estado === "anulada";
 
+  // Envío por correo (modal)
+  const [enviando, setEnviando] = useState(false);
+  const [email, setEmail] = useState(factura.enviadaA ?? factura.clienteEmail ?? "");
+  const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
+  const [enviada, setEnviada] = useState(false);
+
   function anular() {
     start(async () => {
       await anularFactura(factura.id);
       setConfirmando(false);
       router.refresh();
+    });
+  }
+
+  function enviar() {
+    setErrorEnvio(null);
+    start(async () => {
+      const res = await enviarFacturaPorCorreo({ id: factura.id, email });
+      if (!res.ok) {
+        setErrorEnvio(res.error ?? "No se pudo enviar");
+        return;
+      }
+      setEnviada(true);
+      router.refresh();
+      setTimeout(() => {
+        setEnviando(false);
+        setEnviada(false);
+      }, 1600);
     });
   }
 
@@ -35,6 +59,17 @@ export function FacturaView({ factura }: { factura: FacturaVenta }) {
           <ArrowLeft className="size-4" /> Facturación
         </button>
         <div className="flex flex-wrap items-center gap-2">
+          {!anulada && (
+            <button
+              onClick={() => {
+                setErrorEnvio(null);
+                setEnviando(true);
+              }}
+              className="flex cursor-pointer items-center gap-2 rounded-xl border border-line px-4 py-2.5 text-[14px] font-bold text-ink transition-colors hover:border-brand hover:text-brand"
+            >
+              <Mail className="size-4.5" /> Enviar por correo
+            </button>
+          )}
           {!anulada &&
             (confirmando ? (
               <span className="flex items-center gap-2 rounded-xl bg-bad-soft px-3 py-1.5 text-[13px] font-semibold text-bad">
@@ -68,6 +103,88 @@ export function FacturaView({ factura }: { factura: FacturaVenta }) {
           Factura anulada — no computa en la declaración.
         </div>
       )}
+
+      {factura.enviadaA && !anulada && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-good-soft px-4 py-2.5 text-[13px] font-semibold text-good print:hidden">
+          <Check className="size-4" /> Enviada a {factura.enviadaA}
+          {factura.enviadaEl ? ` · ${factura.enviadaEl}` : ""}
+        </div>
+      )}
+
+      {/* Modal de envío por correo */}
+      {enviando &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+            <div className="w-full max-w-md rounded-2xl bg-card p-5 shadow-(--shadow-lift)">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 font-display text-[17px] font-bold tracking-tight">
+                  <Mail className="size-4.5 text-ink-soft" /> Enviar factura {factura.numero}
+                </h3>
+                <button
+                  onClick={() => setEnviando(false)}
+                  className="cursor-pointer rounded-lg p-1 text-ink-soft hover:bg-chip hover:text-ink"
+                  aria-label="Cerrar"
+                >
+                  <X className="size-4.5" />
+                </button>
+              </div>
+
+              {enviada ? (
+                <div className="rounded-xl bg-good-soft px-4 py-6 text-center">
+                  <div className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-good text-white">
+                    <Check className="size-5" />
+                  </div>
+                  <b className="font-display text-[16px] font-bold text-good">Enviada a {email}</b>
+                </div>
+              ) : (
+                <>
+                  <p className="mb-3.5 text-[12.5px] text-ink-soft">
+                    Se manda directamente desde el correo del restaurante, con el PDF de la factura adjunto.
+                  </p>
+
+                  {errorEnvio && (
+                    <div className="mb-3 rounded-[14px] bg-bad-soft px-4 py-3 text-[13px] font-semibold text-bad">
+                      {errorEnvio}
+                    </div>
+                  )}
+
+                  <label className="block text-[11px] font-semibold tracking-wider text-ink-soft uppercase">
+                    Correo del cliente
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && email.trim() && !ocupado) enviar();
+                      }}
+                      placeholder="cliente@correo.com"
+                      autoFocus
+                      className="mt-1 block w-full rounded-xl border border-line bg-card px-3 py-2.5 font-body text-[14px] font-normal tracking-normal outline-none focus:border-brand"
+                    />
+                  </label>
+
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={() => setEnviando(false)}
+                      className="flex-1 cursor-pointer rounded-xl border border-line px-4 py-2.5 text-[14px] font-semibold text-ink-soft transition-colors hover:border-[#CFC6B4] hover:text-ink"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={enviar}
+                      disabled={ocupado || !email.trim()}
+                      className="flex flex-[1.4] cursor-pointer items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-[14px] font-bold text-white transition-colors hover:bg-black disabled:opacity-40"
+                    >
+                      <Send className="size-4" /> {ocupado ? "Enviando…" : "Enviar"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* La factura en sí — folio A4 */}
       <div className="relative mx-auto max-w-full rounded-xl border border-line bg-white p-8 text-[13px] text-black shadow-sm max-sm:p-5 print:rounded-none print:border-none print:shadow-none">

@@ -1769,6 +1769,9 @@ export type FacturaVenta = {
   total: number;
   ticketId: string | null;
   emitidaPor: string | null;
+  clienteEmail: string | null; // de la ficha del cliente, para prellenar el envío
+  enviadaA: string | null; // último correo al que se mandó
+  enviadaEl: string | null; // "4 jul, 13:05" (hora Madrid)
   local: { nombre: string; cif: string | null; direccion: string | null; telefono: string | null };
 };
 
@@ -1786,10 +1789,15 @@ export async function getFacturaVenta(id: string): Promise<FacturaVenta | null> 
       (async (): Promise<FacturaVenta | null> => {
         const [ajustes, filas] = await Promise.all([
           getAjustes(),
-          db.select().from(schema.facturasVenta).where(eq(schema.facturasVenta.id, id)).limit(1),
+          db
+            .select({ factura: schema.facturasVenta, clienteEmail: schema.clientes.email })
+            .from(schema.facturasVenta)
+            .leftJoin(schema.clientes, eq(schema.facturasVenta.clienteId, schema.clientes.id))
+            .where(eq(schema.facturasVenta.id, id))
+            .limit(1),
         ]);
-        const f = filas[0];
-        if (!f) return null;
+        if (!filas[0]) return null;
+        const f = filas[0].factura;
         return {
           id: f.id,
           numero: f.numero,
@@ -1810,6 +1818,17 @@ export async function getFacturaVenta(id: string): Promise<FacturaVenta | null> 
           total: Number(f.total),
           ticketId: f.ticketId,
           emitidaPor: f.emitidaPor,
+          clienteEmail: filas[0].clienteEmail,
+          enviadaA: f.enviadaA,
+          enviadaEl: f.enviadaAt
+            ? new Intl.DateTimeFormat("es-ES", {
+                timeZone: "Europe/Madrid",
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              }).format(f.enviadaAt)
+            : null,
           local: {
             nombre: ajustes.nombreFiscal || "Can Costa",
             cif: ajustes.cif,
