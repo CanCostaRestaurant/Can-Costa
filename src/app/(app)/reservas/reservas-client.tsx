@@ -299,6 +299,7 @@ function FilaReserva({
           title={r.notas ? `${r.nombre} · ${r.notas}` : r.nombre}
         >
           {r.nombre}
+          {r.origen === "web" && <Chip tone="good" className="ml-2 align-middle">web</Chip>}
           {r.notas && <span className="ml-2 font-normal text-ink-soft">· {r.notas}</span>}
         </b>
         <small className="flex items-center gap-2 text-xs text-ink-soft">

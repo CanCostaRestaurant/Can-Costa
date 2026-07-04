@@ -1206,6 +1206,7 @@ export type ReservaDia = {
   mesa2Nombre: string | null; // segunda mesa cuando se juntan
   estado: string;
   notas: string | null;
+  origen: string; // "manual" | "web"
 };
 
 export type DiaReservas = {
@@ -1261,6 +1262,7 @@ export async function getReservasDia(fecha: string): Promise<DiaReservas> {
           mesa2Nombre: f.mesa2Nombre,
           estado: f.reserva.estado,
           notas: f.reserva.notas,
+          origen: f.reserva.origen,
         }));
 
         const activas = reservasDia.filter((r) => r.estado === "confirmada" || r.estado === "sentada");

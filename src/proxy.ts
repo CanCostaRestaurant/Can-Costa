@@ -7,7 +7,8 @@ import { COOKIE_SESION, verificarSesion, type RolUsuario } from "@/lib/auth";
 // El login NO cubre los endpoints de sistema: el cron y salud se autentican
 // por su cuenta (x-vercel-cron / CRON_SECRET). Si no, el gate de login los
 // redirige a /login y el cron nunca llega a ejecutar su handler.
-const RUTAS_PUBLICAS = ["/login", "/api/salud", "/api/cron"];
+// /reservar = reservas web públicas (los clientes reservan sin login).
+const RUTAS_PUBLICAS = ["/login", "/api/salud", "/api/cron", "/reservar"];
 
 function esPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((p) => pathname === p || pathname.startsWith(p + "/"));
