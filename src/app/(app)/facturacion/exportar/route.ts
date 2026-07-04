@@ -180,7 +180,8 @@ export async function GET(req: NextRequest) {
         ventasDias.map((v) => {
           const total = Number(v.total);
           const base = total / (1 + pct / 100);
-          return [v.dia, v.tickets, Math.round(base * 100) / 100, Math.round((total - base) * 100) / 100, total];
+          // el nº de tickets va como texto para que no se formatee con decimales
+          return [v.dia, String(v.tickets), Math.round(base * 100) / 100, Math.round((total - base) * 100) / 100, total];
         }),
       ),
     });
