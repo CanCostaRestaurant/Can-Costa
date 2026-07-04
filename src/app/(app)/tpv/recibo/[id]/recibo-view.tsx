@@ -2,13 +2,21 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, Check, Printer } from "lucide-react";
 import { type Recibo } from "@/lib/db/queries";
 import { eur } from "@/lib/utils";
 
 const METODO: Record<string, string> = { efectivo: "Efectivo", tarjeta: "Tarjeta", mixto: "Varios" };
 
-export function ReciboView({ recibo, autoimprimir }: { recibo: Recibo; autoimprimir?: boolean }) {
+export function ReciboView({
+  recibo,
+  autoimprimir,
+  reciénCobrado,
+}: {
+  recibo: Recibo;
+  autoimprimir?: boolean;
+  reciénCobrado?: boolean;
+}) {
   const router = useRouter();
 
   // Al llegar recién cobrado (?print=1) se abre el diálogo de impresión solo.
@@ -21,13 +29,29 @@ export function ReciboView({ recibo, autoimprimir }: { recibo: Recibo; autoimpri
 
   return (
     <section className="anim-in mx-auto max-w-md">
+      {/* Confirmación de cobro (no sale en la impresión) */}
+      {reciénCobrado && (
+        <div className="mb-4 rounded-2xl bg-good-soft px-5 py-4 text-center print:hidden">
+          <div className="mx-auto mb-1.5 grid size-11 place-items-center rounded-full bg-good text-white">
+            <Check className="size-6" />
+          </div>
+          <div className="font-display text-[19px] font-bold tracking-tight text-good">Cobrado</div>
+          {recibo.cambio !== null && recibo.cambio > 0 && (
+            <div className="mt-1.5">
+              <span className="text-[13px] font-semibold text-ink-soft">Cambio a devolver </span>
+              <b className="font-display text-[26px] font-bold text-ink">{eur(recibo.cambio)}</b>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Barra de acciones (no sale en la impresión) */}
       <div className="mb-4 flex items-center justify-between gap-2 print:hidden">
         <button
           onClick={() => router.push("/tpv")}
           className="flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-2 text-[14px] font-semibold text-ink-soft transition-colors hover:bg-chip hover:text-ink"
         >
-          <ArrowLeft className="size-4" /> Mesas
+          <ArrowLeft className="size-4" /> {reciénCobrado ? "Nueva mesa" : "Mesas"}
         </button>
         <button
           onClick={() => window.print()}

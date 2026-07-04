@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Banknote, Check, CreditCard, Minus, Plus, Printer, Users, X } from "lucide-react";
+import { ArrowLeft, Banknote, CreditCard, Minus, Plus, Users, X } from "lucide-react";
 import { type PlatoTpv, type TicketDetalle } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
 import { anularTicket, cambiarComensales, eliminarPago, registrarPago } from "./actions";
@@ -406,8 +406,7 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
         <PanelCobro
           ticket={ticket}
           onCerrar={() => setCobrando(false)}
-          onListo={() => router.push("/tpv")}
-          onTicket={(id) => router.push(`/tpv/recibo/${id}?print=1`)}
+          onCobrado={(id) => router.push(`/tpv/recibo/${id}?cobrado=1`)}
           onRefrescar={() => router.refresh()}
         />
       )}
@@ -420,20 +419,17 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
 function PanelCobro({
   ticket,
   onCerrar,
-  onListo,
-  onTicket,
+  onCobrado,
   onRefrescar,
 }: {
   ticket: TicketDetalle;
   onCerrar: () => void;
-  onListo: () => void;
-  onTicket: (id: string) => void;
+  onCobrado: (id: string) => void; // ticket pagado del todo → ir al recibo
   onRefrescar: () => void;
 }) {
   const [cobrando, startCobro] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [avisoParcial, setAvisoParcial] = useState<string | null>(null);
-  const [cobrado, setCobrado] = useState<{ id: string; cambio: number | null } | null>(null);
 
   const restante = ticket.restante;
   const [importeTxt, setImporteTxt] = useState(String(restante));
@@ -480,9 +476,9 @@ function PanelCobro({
         return;
       }
       if (res.cerrado) {
-        // Ticket cerrado: mostramos "Cobrado ✓" y NO refrescamos aún (si no,
-        // la página salta al mapa y no se ve el cambio ni el botón de ticket).
-        setCobrado({ id: ticket.id, cambio: metodo === "efectivo" ? cambio : null });
+        // Pagado del todo → al recibo (que muestra "Cobrado", cambio y pagos).
+        // No refrescamos la comanda: la server action ya revalidó /tpv.
+        onCobrado(ticket.id);
       } else {
         const trozos = [`✓ ${eur(importe)} en ${metodo} registrado`];
         if (metodo === "efectivo" && cambio !== null && cambio > 0) trozos.push(`cambio ${eur(cambio)}`);
@@ -496,41 +492,13 @@ function PanelCobro({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 max-md:p-0 md:items-center"
-      onClick={cobrado ? undefined : onCerrar}
+      onClick={cobrando ? undefined : onCerrar}
     >
       <div
         className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-card p-5 shadow-2xl max-md:rounded-b-none"
         onClick={(e) => e.stopPropagation()}
       >
-        {cobrado ? (
-          // ── Cobrado del todo ✓ ──
-          <div className="text-center">
-            <div className="mx-auto mb-3 grid size-14 place-items-center rounded-full bg-good-soft text-good">
-              <Check className="size-8" />
-            </div>
-            <div className="font-display text-[22px] font-bold tracking-tight">Cobrado</div>
-            {cobrado.cambio !== null && cobrado.cambio > 0 && (
-              <div className="mt-2 rounded-xl bg-warn-soft px-4 py-3">
-                <div className="text-[12.5px] font-semibold text-[#7A5106]">Cambio a devolver</div>
-                <div className="font-display text-[30px] font-bold text-[#7A5106]">{eur(cobrado.cambio)}</div>
-              </div>
-            )}
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button
-                onClick={() => onTicket(cobrado.id)}
-                className="flex min-h-13 cursor-pointer items-center justify-center gap-2 rounded-xl border border-line bg-card text-[15px] font-bold transition-colors hover:border-brand"
-              >
-                <Printer className="size-5" /> Ticket
-              </button>
-              <button
-                onClick={onListo}
-                className="flex min-h-13 cursor-pointer items-center justify-center gap-2 rounded-xl bg-ink text-[15px] font-bold text-white transition-colors hover:bg-black"
-              >
-                Listo
-              </button>
-            </div>
-          </div>
-        ) : (
+        {
           // ── Cobro (total o por partes) ──
           <>
             <div className="mb-3 flex items-center justify-between">
@@ -684,7 +652,7 @@ function PanelCobro({
               Con tarjeta: pasa {eur(importe)} por el datáfono y confirma aquí.
             </p>
           </>
-        )}
+        }
       </div>
     </div>
   );

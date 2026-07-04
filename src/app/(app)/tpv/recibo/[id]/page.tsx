@@ -9,11 +9,11 @@ export default async function ReciboPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ print?: string }>;
+  searchParams: Promise<{ print?: string; cobrado?: string }>;
 }) {
   const { id } = await params;
-  const { print } = await searchParams;
+  const { print, cobrado } = await searchParams;
   const recibo = await getRecibo(id);
   if (!recibo) redirect("/tpv");
-  return <ReciboView recibo={recibo} autoimprimir={print === "1"} />;
+  return <ReciboView recibo={recibo} autoimprimir={print === "1"} reciénCobrado={cobrado === "1"} />;
 }
