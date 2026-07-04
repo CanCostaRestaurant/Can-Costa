@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Banknote, CreditCard, Minus, Plus, Users, X } from "lucide-react";
 import { type PlatoTpv, type TicketDetalle } from "@/lib/db/queries";
@@ -430,6 +431,11 @@ function PanelCobro({
   const [cobrando, startCobro] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [avisoParcial, setAvisoParcial] = useState<string | null>(null);
+  // El overlay se pinta con un portal a <body> para que cubra SIEMPRE toda la
+  // pantalla: dentro de la comanda (que tiene animación con transform) un
+  // `fixed` se ancla al contenedor y el velo no llenaba el fondo.
+  const [montado, setMontado] = useState(false);
+  useEffect(() => setMontado(true), []);
 
   const restante = ticket.restante;
   const [importeTxt, setImporteTxt] = useState(String(restante));
@@ -489,9 +495,11 @@ function PanelCobro({
     });
   }
 
-  return (
+  if (!montado) return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 max-md:p-0 md:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-4 max-md:p-0 md:items-center"
       onClick={cobrando ? undefined : onCerrar}
     >
       <div
@@ -654,7 +662,8 @@ function PanelCobro({
           </>
         }
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
