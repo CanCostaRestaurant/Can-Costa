@@ -1037,7 +1037,13 @@ export async function getTicketDetalle(id: string): Promise<TicketDetalle | null
   }
 }
 
-export type PlatoTpv = { id: string; nombre: string; emoji: string; pvp: number | null };
+export type PlatoTpv = {
+  id: string;
+  nombre: string;
+  emoji: string;
+  pvp: number | null;
+  tipo: "entrante" | "principal" | "postre" | "bebida" | "otro";
+};
 
 export async function getPlatosTpv(): Promise<PlatoTpv[]> {
   const db = getDb();
@@ -1055,6 +1061,7 @@ export async function getPlatosTpv(): Promise<PlatoTpv[]> {
           nombre: p.nombre,
           emoji: p.emoji,
           pvp: p.pvp !== null ? Number(p.pvp) : null,
+          tipo: p.tipoPlato,
         }));
       })(),
     );

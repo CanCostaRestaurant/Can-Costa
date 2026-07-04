@@ -9,15 +9,8 @@ import { cn, eur } from "@/lib/utils";
 import { anularTicket, cambiarComensales, eliminarPago, registrarPago } from "./actions";
 import { fijarLinea } from "./comanda-actions";
 
-// Bebidas y extras de un toque (línea libre, sin escandallo).
-const EXTRAS_RAPIDOS: { nombre: string; precio: number }[] = [
-  { nombre: "Copa de vino", precio: 3.5 },
-  { nombre: "Caña", precio: 2.8 },
-  { nombre: "Refresco", precio: 2.5 },
-  { nombre: "Agua", precio: 2.2 },
-  { nombre: "Café", precio: 1.6 },
-  { nombre: "Postre del día", precio: 5.5 },
-];
+// Las bebidas del TPV son platos tipo "bebida" con PVP (getPlatosTpv). Se
+// gestionan en Productos → "Vender en el TPV" o en Escandallos → Nueva bebida.
 
 // Línea de la comanda en estado local: fuente de verdad mientras se edita, para
 // que cada toque sea instantáneo. La BD se sincroniza en segundo plano.
@@ -341,7 +334,9 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
           <div className="card p-4">
             <h3 className="mb-3 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">Platos</h3>
             <div className="grid grid-cols-3 gap-2 max-lg:grid-cols-2">
-              {platos.map((p) => (
+              {platos
+                .filter((p) => p.tipo !== "bebida")
+                .map((p) => (
                 <button
                   key={p.id}
                   onClick={() => anadirPlato(p)}
@@ -362,17 +357,31 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
               Bebidas y extras
             </h3>
             <div className="grid grid-cols-3 gap-2 max-lg:grid-cols-2">
-              {EXTRAS_RAPIDOS.map((e) => (
-                <button
-                  key={e.nombre}
-                  onClick={() => ajustar(null, e.nombre, e.precio, 1)}
-                  className="flex min-h-13 cursor-pointer items-center justify-between rounded-xl border border-line bg-card px-3 py-2 transition-all hover:border-brand active:scale-[0.98]"
-                >
-                  <span className="text-[13px] font-semibold">{e.nombre}</span>
-                  <span className="font-display text-[13px] font-bold text-ink-soft">{eur(e.precio)}</span>
-                </button>
-              ))}
+              {platos
+                .filter((p) => p.tipo === "bebida" && p.pvp !== null)
+                .map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => anadirPlato(b)}
+                    className="flex min-h-13 cursor-pointer items-center justify-between gap-2 rounded-xl border border-line bg-card px-3 py-2 transition-all hover:border-brand active:scale-[0.98]"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="shrink-0">{b.emoji}</span>
+                      <span className="truncate text-[13px] font-semibold">{b.nombre}</span>
+                    </span>
+                    <span className="shrink-0 font-display text-[13px] font-bold text-ink-soft">
+                      {eur(b.pvp ?? 0)}
+                    </span>
+                  </button>
+                ))}
             </div>
+            {platos.filter((p) => p.tipo === "bebida" && p.pvp !== null).length === 0 && (
+              <p className="rounded-xl bg-chip px-3.5 py-2.5 text-[12px] leading-snug text-ink-soft">
+                Aún no hay bebidas con precio. Añádelas desde{" "}
+                <b className="text-ink">Productos → Vender en el TPV</b> o en{" "}
+                <b className="text-ink">Escandallos → Nueva bebida</b>.
+              </p>
+            )}
             <div className="mt-3 flex gap-2 border-t border-line pt-3">
               <input
                 placeholder="Línea libre…"
