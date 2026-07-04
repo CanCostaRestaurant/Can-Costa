@@ -43,6 +43,32 @@ export function ConciliacionClient({ datos }: { datos: Conciliacion }) {
     });
   }
 
+  // Propuestas "seguras": cuadran exacto y no son ambiguas. Son las que se
+  // pueden confirmar en bloque de una vez (sigue siendo TU confirmación).
+  const seguras = sugerencias.filter(
+    (f) => f.sugerencia && !f.sugerencia.ambiguo && Math.abs(f.sugerencia.diferencia) <= datos.tolerancia,
+  );
+
+  function confirmarTodas() {
+    setError(null);
+    setAviso(null);
+    startAccion(async () => {
+      let hechas = 0;
+      for (const f of seguras) {
+        const res = await conciliar(f.id, f.sugerencia!.albaranIds);
+        if (!res.ok) {
+          setError(res.error ?? "No se pudo confirmar alguna conciliación");
+          break;
+        }
+        hechas++;
+      }
+      if (hechas > 0) setAviso(`${hechas} ${hechas === 1 ? "factura conciliada" : "facturas conciliadas"}`);
+      setAbiertaId(null);
+      setMarcados(new Set());
+      router.refresh();
+    });
+  }
+
   return (
     <section className="anim-in">
       <PageHead
@@ -68,34 +94,58 @@ export function ConciliacionClient({ datos }: { datos: Conciliacion }) {
       {/* Conciliaciones recomendadas */}
       {sugerencias.length > 0 && (
         <div className="card mb-3.5 p-5">
-          <h3 className="mb-3 flex items-center gap-2 font-display text-base font-bold tracking-tight">
-            <Sparkles className="size-[18px] text-brand" /> Conciliaciones recomendadas
-          </h3>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
+              <Sparkles className="size-[18px] text-brand" /> Conciliaciones recomendadas
+            </h3>
+            {seguras.length > 1 && (
+              <button
+                onClick={confirmarTodas}
+                disabled={ocupado}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[12.5px] font-semibold transition-colors hover:border-brand disabled:opacity-50"
+              >
+                <Link2 className="size-3.5 text-brand" /> Confirmar todas las seguras ({seguras.length})
+              </button>
+            )}
+          </div>
+          <p className="mb-3 text-[12.5px] text-ink-soft">
+            La IA y el motor las han preparado; revisa y confirma tú cada enlace.
+          </p>
           <div className="flex flex-col gap-2">
-            {sugerencias.map((f) => (
-              <div key={f.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-3.5 py-3">
-                <div className="min-w-0 flex-1">
-                  <b className="block text-sm font-semibold">
-                    {f.proveedor} · factura {f.numero ?? "s/n"} — {eur(f.total)}
-                  </b>
-                  <small className="text-[12.5px] text-ink-soft">
-                    {f.sugerencia!.albaranIds.length}{" "}
-                    {f.sugerencia!.albaranIds.length === 1 ? "albarán suma" : "albaranes suman"}{" "}
-                    {eur(f.sugerencia!.suma)}
-                    {Math.abs(f.sugerencia!.diferencia) > 0.005
-                      ? ` · diferencia ${eur(Math.abs(f.sugerencia!.diferencia))}`
-                      : " · cuadre exacto"}
-                  </small>
+            {sugerencias.map((f) => {
+              const s = f.sugerencia!;
+              const cuadra = Math.abs(s.diferencia) <= datos.tolerancia;
+              return (
+                <div key={f.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-3.5 py-3">
+                  <div className="min-w-0 flex-1">
+                    <b className="block text-sm font-semibold">
+                      {f.proveedor} · factura {f.numero ?? "s/n"} — {eur(f.total)}
+                    </b>
+                    <small className="text-[12.5px] text-ink-soft">
+                      {s.albaranIds.length} {s.albaranIds.length === 1 ? "albarán suma" : "albaranes suman"}{" "}
+                      {eur(s.suma)}
+                      {cuadra ? " · cuadre exacto" : ` · diferencia ${eur(Math.abs(s.diferencia))}`}
+                    </small>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {s.motivo === "referencia" ? (
+                        <Chip tone="good">la factura los menciona</Chip>
+                      ) : (
+                        <Chip tone="gray">los importes cuadran</Chip>
+                      )}
+                      {s.ambiguo && <Chip tone="warn">revisa: hay varias combinaciones posibles</Chip>}
+                      {!cuadra && <Chip tone="bad">descuadre {eur(Math.abs(s.diferencia))}</Chip>}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => ejecutar(() => conciliar(f.id, s.albaranIds))}
+                    disabled={ocupado}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-ink px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-black disabled:opacity-50"
+                  >
+                    <Link2 className="size-4" /> Confirmar
+                  </button>
                 </div>
-                <button
-                  onClick={() => ejecutar(() => conciliar(f.id, f.sugerencia!.albaranIds))}
-                  disabled={ocupado}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-ink px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-black disabled:opacity-50"
-                >
-                  <Link2 className="size-4" /> Conciliar
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

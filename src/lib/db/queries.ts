@@ -2258,7 +2258,17 @@ export type FacturaConc = {
   proveedorId: string | null;
   incidencia: string | null;
   albaranes: AlbaranConc[]; // ya conciliados con ella
-  sugerencia: { albaranIds: string[]; suma: number; diferencia: number } | null;
+  // Propuesta automática que el usuario confirma con un clic. motivo:
+  // "referencia" = la factura menciona esos nº de albarán (lo lee la IA, es lo
+  // más fiable); "importe" = combinación de albaranes cuya suma cuadra.
+  // ambiguo = hay más de una combinación posible por importe → revísala.
+  sugerencia: {
+    albaranIds: string[];
+    suma: number;
+    diferencia: number;
+    motivo: "referencia" | "importe";
+    ambiguo: boolean;
+  } | null;
 };
 
 export type Conciliacion = {
@@ -2266,6 +2276,57 @@ export type Conciliacion = {
   facturas: FacturaConc[];
   albaranesSueltos: AlbaranConc[];
 };
+
+// Dígitos significativos de un nº de documento, para cruzar referencias con
+// robustez: "ALB-01206" y "1206" → "1206" (quita letras, símbolos y ceros a
+// la izquierda). "" si no tiene dígitos (no se cruza).
+function soloDigitos(n: string): string {
+  return n.replace(/\D/g, "").replace(/^0+/, "");
+}
+
+// Mejor combinación de albaranes cuya suma cuadre con `objetivo` (€) dentro de
+// `tolerancia`. Trabaja en céntimos (evita errores de coma flotante) y enumera
+// subconjuntos, acotado a 15 albaranes para no dispararse (2^15). Devuelve si
+// hay MÁS de una combinación que cuadra (ambiguo → mejor que lo mire alguien).
+function mejorCombinacionAlbaranes(
+  candidatos: { id: string; total: number }[],
+  objetivo: number,
+  tolerancia: number,
+): { ids: string[]; suma: number; ambiguo: boolean } | null {
+  const items = candidatos.slice(0, 15).map((a) => ({ id: a.id, c: Math.round(a.total * 100) }));
+  const objetivoC = Math.round(objetivo * 100);
+  const tolC = Math.round(tolerancia * 100);
+  const m = items.length;
+  if (m === 0) return null;
+
+  const soluciones: { mask: number; dif: number; count: number }[] = [];
+  for (let mask = 1; mask < 1 << m; mask++) {
+    let suma = 0;
+    let count = 0;
+    for (let i = 0; i < m; i++) {
+      if (mask & (1 << i)) {
+        suma += items[i].c;
+        count++;
+      }
+    }
+    const dif = Math.abs(suma - objetivoC);
+    if (dif <= tolC) soluciones.push({ mask, dif, count });
+  }
+  if (soluciones.length === 0) return null;
+
+  // Mejor = la que menos se desvía y, a igualdad, con menos albaranes.
+  soluciones.sort((a, b) => a.dif - b.dif || a.count - b.count);
+  const best = soluciones[0];
+  const ids: string[] = [];
+  let sumaC = 0;
+  for (let i = 0; i < m; i++) {
+    if (best.mask & (1 << i)) {
+      ids.push(items[i].id);
+      sumaC += items[i].c;
+    }
+  }
+  return { ids, suma: sumaC / 100, ambiguo: soluciones.length > 1 };
+}
 
 export async function getConciliacion(): Promise<Conciliacion> {
   const db = getDb();
@@ -2288,6 +2349,7 @@ export async function getConciliacion(): Promise<Conciliacion> {
               incidencia: schema.facturas.incidencia,
               proveedor: schema.proveedores.nombre,
               proveedorTexto: schema.facturas.proveedorTexto,
+              datosIa: schema.facturas.datosIa,
             })
             .from(schema.facturas)
             .leftJoin(schema.proveedores, eq(schema.facturas.proveedorId, schema.proveedores.id))
@@ -2315,25 +2377,55 @@ export async function getConciliacion(): Promise<Conciliacion> {
             const hijos = albaranes.filter((a) => a.facturaPadreId === f.id).map(aAlbaran);
             const total = Number(f.total ?? 0);
 
-            // Conciliacion recomendada: albaranes sueltos del mismo proveedor
-            // cuya suma cuadra con la factura (o uno solo que cuadre).
+            // Sugerencia automática (el usuario SIEMPRE la confirma con un clic):
+            //  1) Por REFERENCIA: la propia factura menciona sus nº de albarán
+            //     (lo lee la IA en datosIa.albaranes_referenciados). Es lo más
+            //     fiable — no adivina por importes.
+            //  2) Por IMPORTE: mejor combinación de albaranes del proveedor cuya
+            //     suma cuadra; prueba primero los previos a la fecha de la
+            //     factura (la consolida hasta su fecha) y, si no, todos.
             let sugerencia: FacturaConc["sugerencia"] = null;
             if (hijos.length === 0 && f.proveedorId) {
               const candidatos = sueltos.filter((a) => a.proveedorId === f.proveedorId);
-              // La factura consolida lo entregado HASTA su fecha: se prueba
-              // primero con todos los sueltos y después solo con los previos.
-              const previos = f.fecha ? candidatos.filter((a) => a.fechaISO && a.fechaISO <= f.fecha!) : [];
-              for (const grupo of [candidatos, previos]) {
-                if (!grupo.length || sugerencia) continue;
-                const suma = grupo.reduce((s, a) => s + a.total, 0);
-                if (Math.abs(suma - total) <= tolerancia) {
-                  sugerencia = { albaranIds: grupo.map((a) => a.id), suma, diferencia: suma - total };
+
+              const referencias = Array.isArray(
+                (f.datosIa as { albaranes_referenciados?: unknown } | null)?.albaranes_referenciados,
+              )
+                ? ((f.datosIa as { albaranes_referenciados: unknown[] }).albaranes_referenciados)
+                    .map((x) => soloDigitos(String(x)))
+                    .filter(Boolean)
+                : [];
+              if (referencias.length > 0) {
+                const set = new Set(referencias);
+                const casan = candidatos.filter((a) => {
+                  const d = a.numero ? soloDigitos(a.numero) : "";
+                  return d !== "" && set.has(d);
+                });
+                if (casan.length > 0) {
+                  const suma = casan.reduce((s, a) => s + a.total, 0);
+                  sugerencia = {
+                    albaranIds: casan.map((a) => a.id),
+                    suma,
+                    diferencia: suma - total,
+                    motivo: "referencia",
+                    ambiguo: false,
+                  };
                 }
               }
-              if (!sugerencia) {
-                const unoExacto = candidatos.find((a) => Math.abs(a.total - total) <= tolerancia);
-                if (unoExacto) {
-                  sugerencia = { albaranIds: [unoExacto.id], suma: unoExacto.total, diferencia: unoExacto.total - total };
+
+              if (!sugerencia && candidatos.length > 0) {
+                const previos = f.fecha ? candidatos.filter((a) => a.fechaISO && a.fechaISO <= f.fecha!) : [];
+                const combi =
+                  mejorCombinacionAlbaranes(previos, total, tolerancia) ??
+                  mejorCombinacionAlbaranes(candidatos, total, tolerancia);
+                if (combi) {
+                  sugerencia = {
+                    albaranIds: combi.ids,
+                    suma: combi.suma,
+                    diferencia: combi.suma - total,
+                    motivo: "importe",
+                    ambiguo: combi.ambiguo,
+                  };
                 }
               }
             }

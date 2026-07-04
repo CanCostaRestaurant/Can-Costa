@@ -21,6 +21,10 @@ export type FacturaExtraida = {
   iva: number | null;
   total: number | null;
   tipo: "factura" | "albaran" | "ticket" | null;
+  // Números de albarán/nota de entrega que una FACTURA menciona o consolida
+  // (muchas facturas de proveedor listan "Rel. albaranes: 1206, 1213…").
+  // Es la señal más fiable para conciliar sin adivinar por importes.
+  albaranes_referenciados: string[] | null;
   categoria_proveedor:
     | "materia_prima"
     | "bebidas"
@@ -52,6 +56,12 @@ const HERRAMIENTA: Anthropic.Tool = {
         enum: ["factura", "albaran", "ticket", null],
         description:
           "Tipo de documento: 'factura' (con nº de factura, base e IVA desglosado), 'albaran' (nota de entrega, a veces sin importes), 'ticket' (ticket de caja simplificado)",
+      },
+      albaranes_referenciados: {
+        type: ["array", "null"],
+        items: { type: "string" },
+        description:
+          "SOLO si el documento es una FACTURA y menciona los albaranes/notas de entrega que agrupa: lista aquí esos números de albarán tal cual aparecen (ej. ['1206','1213','1220']). Búscalos en textos como 'Rel. albaranes', 'Según albarán nº', 'Ntra. entrega', o en una columna de albarán por línea. Si no menciona ninguno, o es un albarán/ticket, deja null.",
       },
       categoria_proveedor: {
         type: ["string", "null"],
@@ -130,6 +140,7 @@ Reglas:
 - unidad: normaliza a "kg", "ud", "L" o "caja" cuando sea posible.
 - proveedor_id: usa el id del proveedor conocido si el nombre coincide; si no, null y deja el nombre leído en proveedor.
 - tipo: distingue factura (nº factura + IVA desglosado) de albarán (nota de entrega) y de ticket de caja.
+- albaranes_referenciados: si es una FACTURA que agrupa varios albaranes, apunta los números de esos albaranes que veas mencionados; si no los menciona o no es factura, null.
 - categoria_proveedor: SOLO para proveedores nuevos; si es conocido, déjala en null.
 - No inventes líneas ni importes: si un dato no se lee bien, déjalo en null.`;
 
