@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChartColumn, LayoutGrid, Map, Settings2, ShoppingBag, Users } from "lucide-react";
+import { ChartColumn, LayoutGrid, Lock, Map, Settings2, ShoppingBag, Users } from "lucide-react";
 import { PageHead } from "@/components/ui";
 import { type MapaMesasTpv, type MesaEstado } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
@@ -106,6 +106,12 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
               className="card flex items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold"
             >
               <Settings2 className="size-4 text-ink-soft" /> Distribución
+            </Link>
+            <Link
+              href="/tpv/cierre"
+              className="flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[13.5px] font-semibold text-white transition-colors hover:bg-black"
+            >
+              <Lock className="size-4" /> Cierre de caja
             </Link>
           </div>
         }

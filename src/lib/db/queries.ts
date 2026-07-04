@@ -950,6 +950,13 @@ export type LineaTicket = {
   total: number;
 };
 
+export type PagoTicket = {
+  id: string;
+  metodo: "efectivo" | "tarjeta" | "mixto";
+  importe: number;
+  entregado: number | null;
+};
+
 export type TicketDetalle = {
   id: string;
   mesaId: string | null;
@@ -958,6 +965,9 @@ export type TicketDetalle = {
   comensales: number | null;
   minutos: number;
   total: number;
+  pagado: number; // suma de pagos parciales ya registrados
+  restante: number;
+  pagos: PagoTicket[];
   lineas: LineaTicket[];
 };
 
@@ -975,11 +985,18 @@ export async function getTicketDetalle(id: string): Promise<TicketDetalle | null
           .where(eq(schema.tickets.id, id));
         if (!fila) return null;
 
-        const lineas = await db
-          .select()
-          .from(schema.ticketLineas)
-          .where(eq(schema.ticketLineas.ticketId, id))
-          .orderBy(asc(schema.ticketLineas.createdAt));
+        const [lineas, pagos] = await Promise.all([
+          db
+            .select()
+            .from(schema.ticketLineas)
+            .where(eq(schema.ticketLineas.ticketId, id))
+            .orderBy(asc(schema.ticketLineas.createdAt)),
+          db
+            .select()
+            .from(schema.ticketPagos)
+            .where(eq(schema.ticketPagos.ticketId, id))
+            .orderBy(asc(schema.ticketPagos.createdAt)),
+        ]);
 
         const lineasMap: LineaTicket[] = lineas.map((l) => ({
           id: l.id,
@@ -989,6 +1006,15 @@ export async function getTicketDetalle(id: string): Promise<TicketDetalle | null
           precioUnitario: Number(l.precioUnitario),
           total: Number(l.total),
         }));
+        const pagosMap: PagoTicket[] = pagos.map((p) => ({
+          id: p.id,
+          metodo: p.metodo,
+          importe: Number(p.importe),
+          entregado: p.entregado !== null ? Number(p.entregado) : null,
+        }));
+
+        const total = lineasMap.reduce((acc, l) => acc + l.total, 0);
+        const pagado = pagosMap.reduce((acc, p) => acc + p.importe, 0);
 
         return {
           id: fila.ticket.id,
@@ -997,7 +1023,10 @@ export async function getTicketDetalle(id: string): Promise<TicketDetalle | null
           estado: fila.ticket.estado,
           comensales: fila.ticket.comensales,
           minutos: minutosDesde(fila.ticket.abiertoAt),
-          total: lineasMap.reduce((acc, l) => acc + l.total, 0),
+          total,
+          pagado,
+          restante: Math.max(0, Math.round((total - pagado) * 100) / 100),
+          pagos: pagosMap,
           lineas: lineasMap,
         };
       })(),
@@ -1164,7 +1193,20 @@ export async function getDesgloseDia(fecha: string): Promise<DesgloseDia> {
         }));
 
         const totalDia = ticketsDia.reduce((acc, t) => acc + t.total, 0);
-        const efectivo = ticketsDia.filter((t) => t.metodo === "efectivo").reduce((a, t) => a + t.total, 0);
+        // Efectivo/tarjeta desde los PAGOS (un ticket puede llevar de los dos).
+        let efectivo = 0;
+        if (cobrados.length) {
+          const pagosDia = await db
+            .select()
+            .from(schema.ticketPagos)
+            .where(
+              inArray(
+                schema.ticketPagos.ticketId,
+                cobrados.map((c) => c.ticket.id),
+              ),
+            );
+          efectivo = pagosDia.filter((p) => p.metodo === "efectivo").reduce((a, p) => a + Number(p.importe), 0);
+        }
         const comensales = ticketsDia.reduce((a, t) => a + (t.comensales ?? 0), 0);
 
         return {
@@ -1579,10 +1621,11 @@ export type Recibo = {
   numero: number | null;
   mesaNombre: string;
   fechaHora: string;
-  metodo: "efectivo" | "tarjeta" | null;
+  metodo: "efectivo" | "tarjeta" | "mixto" | null;
   comensales: number | null;
   entregado: number | null;
   cambio: number | null;
+  pagos: { metodo: "efectivo" | "tarjeta" | "mixto"; importe: number }[]; // desglose si pagaron por partes
   lineas: { descripcion: string; cantidad: number; precioUnitario: number; total: number }[];
   base: number;
   iva: number;
@@ -1608,16 +1651,31 @@ export async function getRecibo(id: string): Promise<Recibo | null> {
         const fila = filas[0];
         if (!fila || fila.ticket.estado !== "cobrado") return null;
 
-        const lineas = await db
-          .select()
-          .from(schema.ticketLineas)
-          .where(eq(schema.ticketLineas.ticketId, id))
-          .orderBy(asc(schema.ticketLineas.createdAt));
+        const [lineas, pagos] = await Promise.all([
+          db
+            .select()
+            .from(schema.ticketLineas)
+            .where(eq(schema.ticketLineas.ticketId, id))
+            .orderBy(asc(schema.ticketLineas.createdAt)),
+          db
+            .select()
+            .from(schema.ticketPagos)
+            .where(eq(schema.ticketPagos.ticketId, id))
+            .orderBy(asc(schema.ticketPagos.createdAt)),
+        ]);
 
         const total = Number(fila.ticket.total ?? 0);
         const ivaPct = ajustes.ivaVentasPct;
         const base = total / (1 + ivaPct / 100);
-        const entregado = fila.ticket.entregado !== null ? Number(fila.ticket.entregado) : null;
+        // Entregado y cambio: del último pago en efectivo (el cambio se dio
+        // en ese momento, sobre ese pago). Tickets viejos: campo del ticket.
+        const ultimoEfectivo = [...pagos].reverse().find((p) => p.metodo === "efectivo" && p.entregado !== null);
+        const entregado = ultimoEfectivo
+          ? Number(ultimoEfectivo.entregado)
+          : fila.ticket.entregado !== null
+            ? Number(fila.ticket.entregado)
+            : null;
+        const importeEfectivo = ultimoEfectivo ? Number(ultimoEfectivo.importe) : total;
         const cobradoAt = fila.ticket.cobradoAt ?? fila.ticket.abiertoAt;
 
         return {
@@ -1635,7 +1693,8 @@ export async function getRecibo(id: string): Promise<Recibo | null> {
           metodo: fila.ticket.metodoPago,
           comensales: fila.ticket.comensales,
           entregado,
-          cambio: entregado !== null ? entregado - total : null,
+          cambio: entregado !== null ? entregado - importeEfectivo : null,
+          pagos: pagos.map((p) => ({ metodo: p.metodo, importe: Number(p.importe) })),
           lineas: lineas.map((l) => ({
             descripcion: l.descripcion,
             cantidad: l.cantidad,
@@ -2188,5 +2247,141 @@ export async function getPersonalMes(mes: string): Promise<PersonalMes> {
   } catch (e) {
     logFallo("getPersonalMes", e);
     return { mes, gastos: [], total: 0 };
+  }
+}
+
+// ---------------------------------------------------------------------
+// Cierre de caja: cuadre diario de efectivo y datafono contra el TPV
+// ---------------------------------------------------------------------
+
+export type CierreDia = {
+  fecha: string;
+  ticketsAbiertos: { id: string; mesa: string; total: number }[]; // bloquean el cierre
+  numTickets: number;
+  totalDia: number;
+  efectivoEsperado: number; // ventas en efectivo del dia
+  tarjetaEsperada: number; // ventas en tarjeta del dia
+  fondoAnterior: number; // fondo que dejo el ultimo cierre anterior
+  cierre: {
+    efectivoContado: number;
+    datafono: number;
+    fondoSiguiente: number;
+    efectivoEsperado: number;
+    tarjetaEsperada: number;
+    fondoAnterior: number;
+    notas: string | null;
+    cerradoPor: string | null;
+    actualizado: string;
+  } | null; // null = aun sin cerrar
+};
+
+export async function getCierreDia(fecha: string): Promise<CierreDia> {
+  const vacio: CierreDia = {
+    fecha,
+    ticketsAbiertos: [],
+    numTickets: 0,
+    totalDia: 0,
+    efectivoEsperado: 0,
+    tarjetaEsperada: 0,
+    fondoAnterior: 0,
+    cierre: null,
+  };
+  const db = getDb();
+  if (!db || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return vacio;
+
+  try {
+    return await conPlazo(
+      (async (): Promise<CierreDia> => {
+        const desde = new Date(fecha + "T00:00:00Z");
+        const hasta = new Date(desde.getTime() + 86_400_000);
+
+        const [abiertos, cobrados, [cierreFila], [previo]] = await Promise.all([
+          db
+            .select({ ticket: schema.tickets, mesaNombre: schema.mesas.nombre })
+            .from(schema.tickets)
+            .leftJoin(schema.mesas, eq(schema.tickets.mesaId, schema.mesas.id))
+            .where(eq(schema.tickets.estado, "abierto")),
+          db
+            .select({ id: schema.tickets.id, total: schema.tickets.total })
+            .from(schema.tickets)
+            .where(
+              and(
+                eq(schema.tickets.estado, "cobrado"),
+                gte(schema.tickets.cobradoAt, desde),
+                lt(schema.tickets.cobradoAt, hasta),
+              ),
+            ),
+          db.select().from(schema.cierresCaja).where(eq(schema.cierresCaja.fecha, fecha)),
+          db
+            .select()
+            .from(schema.cierresCaja)
+            .where(lt(schema.cierresCaja.fecha, fecha))
+            .orderBy(desc(schema.cierresCaja.fecha))
+            .limit(1),
+        ]);
+
+        // Totales de los abiertos (suma de sus lineas)
+        const idsAbiertos = abiertos.map((a) => a.ticket.id);
+        const totalesAbiertos = new Map<string, number>();
+        if (idsAbiertos.length) {
+          const lineas = await db
+            .select({ ticketId: schema.ticketLineas.ticketId, total: schema.ticketLineas.total })
+            .from(schema.ticketLineas)
+            .where(inArray(schema.ticketLineas.ticketId, idsAbiertos));
+          for (const l of lineas) {
+            totalesAbiertos.set(l.ticketId, (totalesAbiertos.get(l.ticketId) ?? 0) + Number(l.total));
+          }
+        }
+
+        // Efectivo/tarjeta del dia desde los PAGOS de los tickets cobrados
+        let efectivoEsperado = 0;
+        let tarjetaEsperada = 0;
+        if (cobrados.length) {
+          const pagos = await db
+            .select()
+            .from(schema.ticketPagos)
+            .where(inArray(schema.ticketPagos.ticketId, cobrados.map((c) => c.id)));
+          for (const p of pagos) {
+            if (p.metodo === "efectivo") efectivoEsperado += Number(p.importe);
+            else tarjetaEsperada += Number(p.importe);
+          }
+        }
+
+        return {
+          fecha,
+          ticketsAbiertos: abiertos.map((a) => ({
+            id: a.ticket.id,
+            mesa: a.mesaNombre ?? "Para llevar",
+            total: totalesAbiertos.get(a.ticket.id) ?? 0,
+          })),
+          numTickets: cobrados.length,
+          totalDia: cobrados.reduce((acc, c) => acc + Number(c.total ?? 0), 0),
+          efectivoEsperado,
+          tarjetaEsperada,
+          fondoAnterior: previo ? Number(previo.fondoSiguiente) : 0,
+          cierre: cierreFila
+            ? {
+                efectivoContado: Number(cierreFila.efectivoContado),
+                datafono: Number(cierreFila.datafono),
+                fondoSiguiente: Number(cierreFila.fondoSiguiente),
+                efectivoEsperado: Number(cierreFila.efectivoEsperado),
+                tarjetaEsperada: Number(cierreFila.tarjetaEsperada),
+                fondoAnterior: Number(cierreFila.fondoAnterior),
+                notas: cierreFila.notas,
+                cerradoPor: cierreFila.cerradoPor,
+                actualizado: new Intl.DateTimeFormat("es-ES", {
+                  timeZone: "Europe/Madrid",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).format(cierreFila.updatedAt),
+              }
+            : null,
+        };
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getCierreDia", e);
+    return vacio;
   }
 }

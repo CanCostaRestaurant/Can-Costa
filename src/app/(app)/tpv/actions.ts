@@ -161,26 +161,56 @@ export async function cambiarComensales(ticketId: string, comensales: number): P
   }
 }
 
-// Cobra el ticket y recalcula las ventas del día (alimenta el dashboard).
-// `entregado` = efectivo con el que paga el cliente (para calcular el cambio).
-export async function cobrarTicket(
+// Registra un pago (parcial o total) de un ticket. Cuando la suma de pagos
+// llega al total, el ticket se cierra solo: nº correlativo, método (o
+// 'mixto' si mezclaron) y recálculo de las ventas del día.
+export async function registrarPago(
   ticketId: string,
-  metodo: "efectivo" | "tarjeta",
-  entregado?: number,
-): Promise<Resultado> {
+  datos: { metodo: "efectivo" | "tarjeta"; importe: number; entregado?: number },
+): Promise<Resultado & { restante?: number; cerrado?: boolean }> {
   const db = getDb();
   if (!db) return SIN_BD;
+  if (!Number.isFinite(datos.importe) || datos.importe <= 0) {
+    return { ok: false, error: "Importe no válido" };
+  }
   try {
     if (!(await ticketAbierto(db, ticketId))) return { ok: false, error: "El ticket no está abierto" };
-    const lineas = await conPlazo(
-      db.select().from(schema.ticketLineas).where(eq(schema.ticketLineas.ticketId, ticketId)),
-    );
+    const [lineas, pagosPrevios] = await Promise.all([
+      conPlazo(db.select().from(schema.ticketLineas).where(eq(schema.ticketLineas.ticketId, ticketId))),
+      conPlazo(db.select().from(schema.ticketPagos).where(eq(schema.ticketPagos.ticketId, ticketId))),
+    ]);
     if (lineas.length === 0) return { ok: false, error: "El ticket está vacío" };
 
     const total = lineas.reduce((acc, l) => acc + Number(l.total), 0);
-    if (metodo === "efectivo" && entregado !== undefined && entregado > 0 && entregado < total - 0.001) {
-      return { ok: false, error: "El efectivo entregado es menor que el total" };
+    const pagado = pagosPrevios.reduce((acc, p) => acc + Number(p.importe), 0);
+    const pendiente = Math.round((total - pagado) * 100) / 100;
+    const importe = Math.round(datos.importe * 100) / 100;
+
+    if (importe > pendiente + 0.001) {
+      return { ok: false, error: `Quedan ${pendiente.toFixed(2).replace(".", ",")} € por cobrar — el pago no puede ser mayor` };
     }
+    if (datos.metodo === "efectivo" && datos.entregado !== undefined && datos.entregado > 0 && datos.entregado < importe - 0.001) {
+      return { ok: false, error: "El efectivo entregado es menor que el importe a cobrar" };
+    }
+
+    await conPlazo(
+      db.insert(schema.ticketPagos).values({
+        ticketId,
+        metodo: datos.metodo,
+        importe: importe.toFixed(2),
+        entregado: datos.metodo === "efectivo" && datos.entregado ? datos.entregado.toFixed(2) : null,
+      }),
+    );
+
+    const restante = Math.round((pendiente - importe) * 100) / 100;
+    if (restante > 0.001) {
+      revalidarTpv();
+      return { ok: true, id: ticketId, restante, cerrado: false };
+    }
+
+    // ── Pagado del todo: cerrar el ticket ──
+    const metodos = new Set([...pagosPrevios.map((p) => p.metodo), datos.metodo]);
+    const metodoFinal = metodos.size > 1 ? ("mixto" as const) : datos.metodo;
     const ahora = new Date();
     const fecha = ahora.toISOString().slice(0, 10);
     const desde = new Date(fecha + "T00:00:00Z");
@@ -201,9 +231,9 @@ export async function cobrarTicket(
         .update(schema.tickets)
         .set({
           estado: "cobrado",
-          metodoPago: metodo,
+          metodoPago: metodoFinal,
           numero,
-          entregado: metodo === "efectivo" && entregado ? entregado.toFixed(2) : null,
+          entregado: null, // el entregado vive en cada pago
           total: total.toFixed(2),
           cobradoAt: ahora,
         })
@@ -238,9 +268,48 @@ export async function cobrarTicket(
     revalidatePath("/ventas");
     revalidatePath("/dashboard");
     revalidatePath("/");
-    return { ok: true, id: ticketId };
+    return { ok: true, id: ticketId, restante: 0, cerrado: true };
+  } catch (e) {
+    return fallo("registrarPago", e);
+  }
+}
+
+// Cobro de un toque (todo el ticket de una vez) — envoltorio de registrarPago.
+export async function cobrarTicket(
+  ticketId: string,
+  metodo: "efectivo" | "tarjeta",
+  entregado?: number,
+): Promise<Resultado> {
+  const db = getDb();
+  if (!db) return SIN_BD;
+  try {
+    const [lineas, pagos] = await Promise.all([
+      conPlazo(db.select().from(schema.ticketLineas).where(eq(schema.ticketLineas.ticketId, ticketId))),
+      conPlazo(db.select().from(schema.ticketPagos).where(eq(schema.ticketPagos.ticketId, ticketId))),
+    ]);
+    const total = lineas.reduce((acc, l) => acc + Number(l.total), 0);
+    const pagado = pagos.reduce((acc, p) => acc + Number(p.importe), 0);
+    const pendiente = Math.round((total - pagado) * 100) / 100;
+    if (pendiente <= 0) return { ok: false, error: "El ticket ya está pagado" };
+    return await registrarPago(ticketId, { metodo, importe: pendiente, entregado });
   } catch (e) {
     return fallo("cobrarTicket", e);
+  }
+}
+
+// Deshacer un pago parcial (equivocación) mientras el ticket siga abierto.
+export async function eliminarPago(pagoId: string, ticketId: string): Promise<Resultado> {
+  const db = getDb();
+  if (!db) return SIN_BD;
+  try {
+    if (!(await ticketAbierto(db, ticketId))) return { ok: false, error: "El ticket ya está cerrado" };
+    const [pago] = await conPlazo(db.select().from(schema.ticketPagos).where(eq(schema.ticketPagos.id, pagoId)));
+    if (!pago || pago.ticketId !== ticketId) return { ok: false, error: "Pago no encontrado" };
+    await conPlazo(db.delete(schema.ticketPagos).where(eq(schema.ticketPagos.id, pagoId)));
+    revalidarTpv();
+    return { ok: true };
+  } catch (e) {
+    return fallo("eliminarPago", e);
   }
 }
 
@@ -249,6 +318,10 @@ export async function anularTicket(ticketId: string): Promise<Resultado> {
   if (!db) return SIN_BD;
   try {
     if (!(await ticketAbierto(db, ticketId))) return { ok: false, error: "El ticket no está abierto" };
+    const pagos = await conPlazo(db.select().from(schema.ticketPagos).where(eq(schema.ticketPagos.ticketId, ticketId)));
+    if (pagos.length > 0) {
+      return { ok: false, error: "Este ticket tiene pagos registrados: deshazlos antes de anular (y devuelve el dinero)" };
+    }
     await conPlazo(db.update(schema.tickets).set({ estado: "anulado" }).where(eq(schema.tickets.id, ticketId)));
     revalidarTpv();
     return { ok: true };

@@ -6,7 +6,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { type Recibo } from "@/lib/db/queries";
 import { eur } from "@/lib/utils";
 
-const METODO: Record<string, string> = { efectivo: "Efectivo", tarjeta: "Tarjeta" };
+const METODO: Record<string, string> = { efectivo: "Efectivo", tarjeta: "Tarjeta", mixto: "Varios" };
 
 export function ReciboView({ recibo, autoimprimir }: { recibo: Recibo; autoimprimir?: boolean }) {
   const router = useRouter();
@@ -98,6 +98,13 @@ export function ReciboView({ recibo, autoimprimir }: { recibo: Recibo; autoimpri
           <span>Pago</span>
           <span className="font-semibold">{recibo.metodo ? METODO[recibo.metodo] : "—"}</span>
         </div>
+        {recibo.pagos.length > 1 &&
+          recibo.pagos.map((p, i) => (
+            <div key={i} className="flex justify-between text-[11px]">
+              <span>· {METODO[p.metodo] ?? p.metodo}</span>
+              <span>{eur(p.importe)}</span>
+            </div>
+          ))}
         {recibo.entregado !== null && (
           <>
             <div className="flex justify-between text-[11px]">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Banknote, Check, CreditCard, Minus, Plus, Printer, Users, X } from "lucide-react";
 import { type PlatoTpv, type TicketDetalle } from "@/lib/db/queries";
@@ -10,7 +10,8 @@ import {
   anularTicket,
   cambiarCantidadLinea,
   cambiarComensales,
-  cobrarTicket,
+  eliminarPago,
+  registrarPago,
 } from "./actions";
 
 // Bebidas y extras de un toque (línea libre, sin escandallo).
@@ -117,16 +118,45 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
           </div>
 
           <div className="border-t-2 border-ink px-4 py-3">
-            <div className="mb-3 flex items-baseline justify-between">
+            <div className="mb-1 flex items-baseline justify-between">
               <span className="text-[13px] font-semibold tracking-wider text-ink-soft uppercase">Total</span>
               <b className="font-display text-3xl font-bold tracking-tight">{eur(ticket.total)}</b>
             </div>
+
+            {/* Pagos parciales ya registrados */}
+            {ticket.pagos.length > 0 && (
+              <div className="mb-2 rounded-xl bg-chip px-3 py-2">
+                {ticket.pagos.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2 py-0.5 text-[13px]">
+                    {p.metodo === "efectivo" ? (
+                      <Banknote className="size-3.5 text-good" />
+                    ) : (
+                      <CreditCard className="size-3.5 text-ink-soft" />
+                    )}
+                    <span className="flex-1 text-ink-soft">{p.metodo === "efectivo" ? "Efectivo" : "Tarjeta"}</span>
+                    <b className="font-display font-bold">{eur(p.importe)}</b>
+                    <button
+                      onClick={() => ejecutar(() => eliminarPago(p.id, ticket.id))}
+                      title="Deshacer este pago"
+                      className="cursor-pointer rounded p-0.5 text-ink-soft hover:bg-bad-soft hover:text-bad"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <div className="mt-1 flex justify-between border-t border-line pt-1.5 text-[13px] font-semibold">
+                  <span>Queda por pagar</span>
+                  <b className="font-display text-[15px] font-bold text-brand">{eur(ticket.restante)}</b>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={() => setCobrando(true)}
-              disabled={ocupado || ticket.lineas.length === 0}
+              disabled={ocupado || ticket.lineas.length === 0 || ticket.restante <= 0}
               className="flex min-h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-good text-[16px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
             >
-              Cobrar {eur(ticket.total)}
+              Cobrar {eur(ticket.restante)}
             </button>
             <button
               onClick={() => {
@@ -232,53 +262,87 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
 
       {cobrando && (
         <PanelCobro
-          ticketId={ticket.id}
-          total={ticket.total}
+          ticket={ticket}
           onCerrar={() => setCobrando(false)}
           onListo={() => router.push("/tpv")}
           onTicket={(id) => router.push(`/tpv/recibo/${id}?print=1`)}
+          onRefrescar={() => router.refresh()}
         />
       )}
     </section>
   );
 }
 
+// ── Panel de cobro: todo de una vez o por partes (grupos), efectivo con
+// cambio o tarjeta. El ticket se cierra cuando la suma de pagos llega. ──
 function PanelCobro({
-  ticketId,
-  total,
+  ticket,
   onCerrar,
   onListo,
   onTicket,
+  onRefrescar,
 }: {
-  ticketId: string;
-  total: number;
+  ticket: TicketDetalle;
   onCerrar: () => void;
   onListo: () => void;
   onTicket: (id: string) => void;
+  onRefrescar: () => void;
 }) {
   const [cobrando, startCobro] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [entregadoTxt, setEntregadoTxt] = useState("");
+  const [avisoParcial, setAvisoParcial] = useState<string | null>(null);
   const [cobrado, setCobrado] = useState<{ id: string; cambio: number | null } | null>(null);
 
-  // Importes sugeridos de efectivo: justos + los billetes que superan el total.
+  const restante = ticket.restante;
+  const [importeTxt, setImporteTxt] = useState(String(restante));
+  const [entregadoTxt, setEntregadoTxt] = useState("");
+  const [partes, setPartes] = useState(Math.max(2, ticket.comensales ?? 2));
+
+  // Si el restante cambia (se registró un pago parcial), recargar el importe.
+  useEffect(() => {
+    setImporteTxt(String(restante));
+    setEntregadoTxt("");
+  }, [restante]);
+
+  const importe = Math.min(parseFloat(importeTxt.replace(",", ".")) || 0, restante);
+  const esParcial = importe > 0 && importe < restante - 0.001;
+  const porParte = Math.ceil((restante / Math.max(1, partes)) * 100) / 100;
+
+  // Importes sugeridos de efectivo: justos + los billetes que superan el importe.
   const sugerencias = useMemo(() => {
-    const notas = [5, 10, 20, 50, 100].filter((n) => n > total);
-    return [Math.ceil(total * 100) / 100, ...notas].slice(0, 4);
-  }, [total]);
+    const notas = [5, 10, 20, 50, 100].filter((n) => n > importe);
+    return [Math.round(importe * 100) / 100, ...notas].slice(0, 4);
+  }, [importe]);
 
   const entregado = parseFloat(entregadoTxt.replace(",", ".")) || 0;
-  const cambio = entregado >= total ? entregado - total : null;
+  const cambio = entregado >= importe && importe > 0 ? entregado - importe : null;
 
   function cobrar(metodo: "efectivo" | "tarjeta") {
+    if (importe <= 0) {
+      setError("Pon el importe a cobrar");
+      return;
+    }
     setError(null);
+    setAvisoParcial(null);
     startCobro(async () => {
-      const res = await cobrarTicket(ticketId, metodo, metodo === "efectivo" && entregado > 0 ? entregado : undefined);
-      if (!res.ok || !res.id) {
+      const res = await registrarPago(ticket.id, {
+        metodo,
+        importe,
+        entregado: metodo === "efectivo" && entregado > 0 ? entregado : undefined,
+      });
+      if (!res.ok) {
         setError(res.error ?? "No se pudo cobrar");
         return;
       }
-      setCobrado({ id: res.id, cambio: metodo === "efectivo" ? cambio : null });
+      if (res.cerrado) {
+        setCobrado({ id: ticket.id, cambio: metodo === "efectivo" ? cambio : null });
+      } else {
+        const trozos = [`✓ ${eur(importe)} en ${metodo} registrado`];
+        if (metodo === "efectivo" && cambio !== null && cambio > 0) trozos.push(`cambio ${eur(cambio)}`);
+        trozos.push(`quedan ${eur(res.restante ?? 0)}`);
+        setAvisoParcial(trozos.join(" · "));
+      }
+      onRefrescar();
     });
   }
 
@@ -288,11 +352,11 @@ function PanelCobro({
       onClick={cobrado ? undefined : onCerrar}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-card p-5 shadow-2xl max-md:rounded-b-none"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-card p-5 shadow-2xl max-md:rounded-b-none"
         onClick={(e) => e.stopPropagation()}
       >
         {cobrado ? (
-          // ── Cobrado ✓ ──
+          // ── Cobrado del todo ✓ ──
           <div className="text-center">
             <div className="mx-auto mb-3 grid size-14 place-items-center rounded-full bg-good-soft text-good">
               <Check className="size-8" />
@@ -320,9 +384,9 @@ function PanelCobro({
             </div>
           </div>
         ) : (
-          // ── Cobro ──
+          // ── Cobro (total o por partes) ──
           <>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between">
               <span className="text-[13px] font-semibold tracking-wider text-ink-soft uppercase">A cobrar</span>
               <button
                 onClick={onCerrar}
@@ -332,11 +396,89 @@ function PanelCobro({
                 <X className="size-5" />
               </button>
             </div>
-            <div className="mb-4 text-center font-display text-[40px] font-bold tracking-tight">{eur(total)}</div>
 
-            {error && (
-              <div className="mb-3 rounded-xl bg-bad-soft px-3.5 py-2.5 text-[13px] font-semibold text-bad">{error}</div>
+            <div className="mb-1 text-center font-display text-[40px] font-bold tracking-tight">
+              {eur(restante)}
+            </div>
+            {ticket.pagado > 0 && (
+              <div className="mb-2 text-center text-[12.5px] font-semibold text-ink-soft">
+                ya pagados {eur(ticket.pagado)} de {eur(ticket.total)}
+              </div>
             )}
+
+            {avisoParcial && (
+              <div className="mb-3 rounded-xl bg-good-soft px-3.5 py-2.5 text-[13px] font-semibold text-good">
+                {avisoParcial}
+              </div>
+            )}
+            {error && (
+              <div className="mb-3 rounded-xl bg-bad-soft px-3.5 py-2.5 text-[13px] font-semibold text-bad">
+                {error}
+              </div>
+            )}
+
+            {/* Cuánto cobrar ahora: todo, o una parte (grupos) */}
+            <div className="mb-3 rounded-xl border border-line p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[13px] font-semibold">Cuánto cobro ahora</span>
+                <span className="flex items-center gap-1.5 text-[12.5px] text-ink-soft">
+                  dividir entre
+                  <button
+                    onClick={() => setPartes((p) => Math.max(2, p - 1))}
+                    className="grid size-7 cursor-pointer place-items-center rounded-lg border border-line hover:bg-chip"
+                    aria-label="Menos partes"
+                  >
+                    <Minus className="size-3.5" />
+                  </button>
+                  <b className="w-5 text-center font-display text-[14px] text-ink">{partes}</b>
+                  <button
+                    onClick={() => setPartes((p) => Math.min(40, p + 1))}
+                    className="grid size-7 cursor-pointer place-items-center rounded-lg border border-line hover:bg-chip"
+                    aria-label="Más partes"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                </span>
+              </div>
+              <div className="mb-2 grid grid-cols-3 gap-1.5">
+                <BotonImporte
+                  activo={!esParcial && importe > 0}
+                  onClick={() => setImporteTxt(String(restante))}
+                >
+                  Todo · {eur(restante, false)}
+                </BotonImporte>
+                <BotonImporte
+                  activo={esParcial && Math.abs(importe - Math.ceil((restante / 2) * 100) / 100) < 0.005}
+                  onClick={() => setImporteTxt(String(Math.ceil((restante / 2) * 100) / 100))}
+                >
+                  Mitad
+                </BotonImporte>
+                <BotonImporte
+                  activo={esParcial && Math.abs(importe - porParte) < 0.005}
+                  onClick={() => setImporteTxt(String(Math.min(porParte, restante)))}
+                >
+                  1/{partes} · {eur(Math.min(porParte, restante), false)}
+                </BotonImporte>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  inputMode="decimal"
+                  value={importeTxt}
+                  onChange={(e) => setImporteTxt(e.target.value)}
+                  className="w-28 rounded-lg border border-line bg-card px-2.5 py-2 font-display text-[17px] font-bold outline-none focus:border-brand"
+                  aria-label="Importe a cobrar"
+                />
+                <span className="font-display text-[15px] font-bold text-ink-soft">€</span>
+                {esParcial && (
+                  <span className="ml-auto rounded-full bg-brand/10 px-2.5 py-1 text-[11.5px] font-bold text-brand">
+                    pago parcial · quedarán {eur(restante - importe)}
+                  </span>
+                )}
+              </div>
+            </div>
 
             {/* Efectivo con cambio */}
             <div className="mb-3 rounded-xl border border-line p-3">
@@ -344,16 +486,16 @@ function PanelCobro({
                 <Banknote className="size-4 text-good" /> Efectivo
               </div>
               <div className="mb-2 grid grid-cols-4 gap-1.5">
-                {sugerencias.map((s) => (
+                {sugerencias.map((s, i) => (
                   <button
-                    key={s}
+                    key={`${s}-${i}`}
                     onClick={() => setEntregadoTxt(String(s))}
                     className={cn(
                       "cursor-pointer rounded-lg border py-2 text-[13px] font-semibold transition-colors",
                       entregado === s ? "border-good bg-good-soft text-good" : "border-line hover:border-good",
                     )}
                   >
-                    {s === sugerencias[0] ? "Justos" : eur(s, false)}
+                    {i === 0 ? "Justos" : eur(s, false)}
                   </button>
                 ))}
               </div>
@@ -363,40 +505,62 @@ function PanelCobro({
                   step="0.5"
                   min="0"
                   inputMode="decimal"
-                  placeholder="otro importe…"
+                  placeholder="me entregan…"
                   value={entregadoTxt}
                   onChange={(e) => setEntregadoTxt(e.target.value)}
-                  className="w-28 rounded-lg border border-line bg-card px-2.5 py-2 text-sm outline-none focus:border-brand"
+                  className="w-32 rounded-lg border border-line bg-card px-2.5 py-2 text-sm outline-none focus:border-brand"
                 />
                 {cambio !== null && cambio > 0 && (
                   <span className="ml-auto text-[13px]">
-                    Cambio <b className="font-display text-[16px]">{eur(cambio)}</b>
+                    Cambio <b className="font-display text-[17px] font-bold">{eur(cambio)}</b>
                   </span>
                 )}
               </div>
               <button
                 onClick={() => cobrar("efectivo")}
-                disabled={cobrando}
+                disabled={cobrando || importe <= 0}
                 className="mt-2.5 flex min-h-13 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-good text-[15px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                <Banknote className="size-5" /> Cobrar en efectivo
+                <Banknote className="size-5" /> Cobrar {eur(importe)} en efectivo
               </button>
             </div>
 
             {/* Tarjeta */}
             <button
               onClick={() => cobrar("tarjeta")}
-              disabled={cobrando}
+              disabled={cobrando || importe <= 0}
               className="flex min-h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-ink text-[15px] font-bold text-white transition-colors hover:bg-black disabled:opacity-50"
             >
-              <CreditCard className="size-5" /> Cobrar con tarjeta
+              <CreditCard className="size-5" /> Cobrar {eur(importe)} con tarjeta
             </button>
             <p className="mt-2 text-center text-[11.5px] text-ink-soft">
-              Con tarjeta: pasa el importe por el datáfono y confirma aquí.
+              Con tarjeta: pasa {eur(importe)} por el datáfono y confirma aquí.
             </p>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+function BotonImporte({
+  activo,
+  onClick,
+  children,
+}: {
+  activo: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "cursor-pointer rounded-lg border py-2 text-[12.5px] font-semibold whitespace-nowrap transition-colors",
+        activo ? "border-brand bg-brand-soft text-brand" : "border-line hover:border-brand",
+      )}
+    >
+      {children}
+    </button>
   );
 }

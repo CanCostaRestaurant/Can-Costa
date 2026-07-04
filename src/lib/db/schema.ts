@@ -336,7 +336,7 @@ export const mesas = pgTable("mesas", {
 });
 
 export const ticketEstadoEnum = pgEnum("ticket_estado", ["abierto", "cobrado", "anulado"]);
-export const metodoPagoEnum = pgEnum("metodo_pago", ["efectivo", "tarjeta"]);
+export const metodoPagoEnum = pgEnum("metodo_pago", ["efectivo", "tarjeta", "mixto"]);
 
 export const tickets = pgTable(
   "tickets",
@@ -360,6 +360,42 @@ export const tickets = pgTable(
     index("tickets_cliente_idx").on(t.clienteId),
   ],
 );
+
+// Pagos de un ticket: puede haber varios (grupos que pagan por partes,
+// mitad efectivo mitad tarjeta…). El ticket se cierra cuando la suma de
+// pagos llega al total. metodo_pago del ticket queda 'mixto' si mezclan.
+export const ticketPagos = pgTable(
+  "ticket_pagos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticketId: uuid("ticket_id")
+      .notNull()
+      .references(() => tickets.id, { onDelete: "cascade" }),
+    metodo: metodoPagoEnum("metodo").notNull(), // efectivo | tarjeta (nunca mixto)
+    importe: numeric("importe", { precision: 12, scale: 2 }).notNull(),
+    entregado: numeric("entregado", { precision: 12, scale: 2 }), // efectivo con que pagan (para el cambio)
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ticket_pagos_ticket_idx").on(t.ticketId)],
+);
+
+// Cierre de caja diario (como Dogterra): cuadre de efectivo contado y
+// datáfono contra lo que dice el TPV. El fondo queda para el día siguiente.
+export const cierresCaja = pgTable("cierres_caja", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  fecha: date("fecha").notNull().unique(),
+  efectivoContado: numeric("efectivo_contado", { precision: 12, scale: 2 }).notNull(), // lo que hay en el cajón
+  datafono: numeric("datafono", { precision: 12, scale: 2 }).notNull(), // total del cierre del datáfono
+  fondoSiguiente: numeric("fondo_siguiente", { precision: 12, scale: 2 }).notNull().default("0"), // cambio que se deja para mañana
+  // Snapshot de lo esperado en el momento del cierre (para el histórico):
+  efectivoEsperado: numeric("efectivo_esperado", { precision: 12, scale: 2 }).notNull(),
+  tarjetaEsperada: numeric("tarjeta_esperada", { precision: 12, scale: 2 }).notNull(),
+  fondoAnterior: numeric("fondo_anterior", { precision: 12, scale: 2 }).notNull().default("0"),
+  notas: text("notas"),
+  cerradoPor: text("cerrado_por"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // Cada línea congela descripción y PVP del momento de la comanda.
 export const ticketLineas = pgTable(
