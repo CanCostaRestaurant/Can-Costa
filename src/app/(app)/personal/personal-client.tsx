@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, FileText, Loader2, Paperclip, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
+import { MonthPicker } from "@/components/date-picker";
 import { type GastoPersonal, type PersonalMes, type Trabajador } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
 import {
@@ -75,11 +76,10 @@ export function PersonalClient({ datos, trabajadores }: { datos: PersonalMes; tr
         titulo="Personal"
         subtitulo="Plantilla y nóminas: gestiona tu equipo y adjunta el PDF de cada nómina"
         derecha={
-          <input
-            type="month"
+          <MonthPicker
             value={datos.mes}
-            onChange={(e) => e.target.value && router.push(`/personal?mes=${e.target.value}`)}
-            className="card rounded-full! px-4 py-2 text-[13.5px] font-semibold outline-none"
+            align="right"
+            onChange={(v) => v && router.push(`/personal?mes=${v}`)}
           />
         }
       />

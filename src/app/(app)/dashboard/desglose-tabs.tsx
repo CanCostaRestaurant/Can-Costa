@@ -38,7 +38,7 @@ export function DesgloseTabs({
   const abierta = categorias.find((c) => c.categoria === drill) ?? null;
 
   return (
-    <div className="card p-5.5">
+    <div className="card p-5.5 transition-shadow duration-300 hover:shadow-lift">
       <h3 className="font-display text-base font-bold tracking-tight">
         Desglose <span className="capitalize">{etiquetaMes}</span>
       </h3>
@@ -49,7 +49,7 @@ export function DesgloseTabs({
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              "flex-1 cursor-pointer rounded-lg px-3 py-1.5 text-[13px] font-semibold capitalize transition-colors",
+              "flex-1 cursor-pointer rounded-lg px-3 py-1.5 text-[13px] font-semibold capitalize transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
               tab === t ? "bg-card shadow-sm" : "text-ink-soft hover:text-ink",
             )}
           >
@@ -58,6 +58,7 @@ export function DesgloseTabs({
         ))}
       </div>
 
+      <div key={tab} className="anim-in">
       {tab === "resultados" && (
         <div>
           <div className="text-center text-[14.5px] font-semibold">
@@ -102,7 +103,7 @@ export function DesgloseTabs({
           <div className="anim-in">
             <button
               onClick={() => setDrill(null)}
-              className="mb-2 flex cursor-pointer items-center gap-1 text-[12.5px] font-semibold text-ink-soft hover:text-ink"
+              className="mb-2 flex cursor-pointer items-center gap-1 text-[12.5px] font-semibold text-ink-soft transition-colors hover:text-ink active:scale-[0.98]"
             >
               <ArrowLeft className="size-3.5" /> todas las categorías
             </button>
@@ -137,7 +138,7 @@ export function DesgloseTabs({
                 <Link
                   key={d.id}
                   href="/documentos"
-                  className="-mx-1.5 flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-[12.5px] hover:bg-hover"
+                  className="-mx-1.5 flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-[12.5px] transition-colors hover:bg-hover"
                 >
                   <span className="min-w-0 flex-1 truncate font-semibold">{d.proveedor}</span>
                   <span className="text-ink-soft capitalize">{d.tipo === "albaran" ? "albarán" : d.tipo}</span>
@@ -174,6 +175,7 @@ export function DesgloseTabs({
           vacio="Sin ventas este mes."
         />
       )}
+      </div>
     </div>
   );
 }
@@ -206,7 +208,7 @@ function Desglose({
       <div className="text-[12px] text-ink-soft capitalize">{etiquetaCorta}</div>
       {nota && <div className="mt-0.5 text-[11.5px] text-ink-soft">{nota}</div>}
 
-      <div className="relative mx-auto my-5 size-44">
+      <div className="anim-in relative mx-auto my-5 size-44">
         <Donut trozos={trozos} />
         <div className="absolute inset-0 grid place-items-center">
           <div className="text-center">
@@ -224,7 +226,7 @@ function Desglose({
             onClick={onClickTrozo ? () => onClickTrozo(t.nombre) : undefined}
             className={cn(
               "flex items-center gap-2 text-[12.5px]",
-              onClickTrozo && "-mx-1.5 cursor-pointer rounded-lg px-1.5 py-1 hover:bg-hover",
+              onClickTrozo && "-mx-1.5 cursor-pointer rounded-lg px-1.5 py-1 transition-colors hover:bg-hover",
             )}
           >
             <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: COLORES[i % COLORES.length] }} />
@@ -239,26 +241,24 @@ function Desglose({
 }
 
 function Donut({ trozos }: { trozos: Trozo[] }) {
-  let acumulado = 0;
+  // Offset acumulado de cada arco, sin mutar variables durante el render.
+  const inicios = trozos.map((_, i) => trozos.slice(0, i).reduce((a, t) => a + t.pct, 0));
   return (
     <svg viewBox="0 0 42 42" className="size-full -rotate-90">
-      {trozos.map((t, i) => {
-        const inicio = acumulado;
-        acumulado += t.pct;
-        return (
-          <circle
-            key={t.nombre}
-            cx="21"
-            cy="21"
-            r="15.9155"
-            fill="none"
-            stroke={COLORES[i % COLORES.length]}
-            strokeWidth="6.5"
-            strokeDasharray={`${Math.max(t.pct - 0.6, 0.1)} ${100 - Math.max(t.pct - 0.6, 0.1)}`}
-            strokeDashoffset={-inicio - 0.3}
-          />
-        );
-      })}
+      {trozos.map((t, i) => (
+        <circle
+          key={t.nombre}
+          cx="21"
+          cy="21"
+          r="15.9155"
+          fill="none"
+          stroke={COLORES[i % COLORES.length]}
+          strokeWidth="6.5"
+          strokeDasharray={`${Math.max(t.pct - 0.6, 0.1)} ${100 - Math.max(t.pct - 0.6, 0.1)}`}
+          strokeDashoffset={-inicios[i] - 0.3}
+          className="[transition:stroke-dasharray_0.5s_ease]"
+        />
+      ))}
     </svg>
   );
 }

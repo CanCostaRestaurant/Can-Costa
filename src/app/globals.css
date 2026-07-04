@@ -65,3 +65,20 @@ body {
   transform-origin: bottom;
   animation: grow-y 0.6s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Entrada de popovers/menús (calendarios, desplegables): escala + fade breve. */
+@utility anim-pop {
+  transform-origin: top;
+  animation: pop-in 0.16s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}

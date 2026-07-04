@@ -66,9 +66,9 @@ function construirMalla(y: number, m: number) {
 }
 
 const PANEL =
-  "anim-in absolute top-full z-50 mt-2 rounded-[18px] border border-line bg-card p-3 shadow-lift";
+  "anim-pop absolute top-full z-50 mt-2 rounded-[18px] border border-line bg-card p-3 shadow-lift";
 const NAV_BTN =
-  "grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-ink-soft transition-colors hover:bg-hover hover:text-ink";
+  "grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-ink-soft transition-all duration-150 hover:bg-hover hover:text-ink active:scale-90";
 
 export function DatePicker({
   value,
@@ -96,12 +96,15 @@ export function DatePicker({
     return { y: base.y, m: base.m };
   });
 
-  // Al abrir, saltar siempre al mes de la fecha seleccionada (o al de hoy).
-  useEffect(() => {
-    if (!open) return;
-    const base = parseYmd(value) ?? parseYmd(hoy)!;
-    setVista({ y: base.y, m: base.m });
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Al abrir, saltar al mes de la fecha seleccionada (ajuste en render, sin efecto).
+  const [estabaAbierto, setEstabaAbierto] = useState(open);
+  if (open !== estabaAbierto) {
+    setEstabaAbierto(open);
+    if (open) {
+      const base = parseYmd(value) ?? parseYmd(hoy)!;
+      setVista({ y: base.y, m: base.m });
+    }
+  }
 
   const malla = useMemo(() => construirMalla(vista.y, vista.m), [vista]);
   const bloqueado = (d: string) => (min && d < min) || (max && d > max);
@@ -122,7 +125,7 @@ export function DatePicker({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "card flex cursor-pointer items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap transition-colors hover:border-brand",
+          "card flex cursor-pointer items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap transition-all duration-200 hover:border-brand active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
           open && "border-brand",
           className,
         )}
@@ -168,7 +171,7 @@ export function DatePicker({
                       setOpen(false);
                     }}
                     className={cn(
-                      "grid size-9 cursor-pointer place-items-center rounded-full text-[13.5px] font-semibold transition-colors",
+                      "grid size-9 cursor-pointer place-items-center rounded-full text-[13.5px] font-semibold transition-all duration-150 active:scale-90",
                       c.enMes ? "text-ink" : "text-ink-soft/40",
                       !isSel && "hover:bg-brand-soft hover:text-brand",
                       isHoy && !isSel && "text-brand ring-1 ring-inset ring-brand/30",
@@ -234,9 +237,12 @@ export function MonthPicker({
   const ahora = new Date();
   const [anyo, setAnyo] = useState(() => sel?.y ?? ahora.getFullYear());
 
-  useEffect(() => {
+  // Al abrir, saltar al año del valor (ajuste en render, sin efecto).
+  const [estabaAbierto, setEstabaAbierto] = useState(open);
+  if (open !== estabaAbierto) {
+    setEstabaAbierto(open);
     if (open) setAnyo(sel?.y ?? ahora.getFullYear());
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
   const etiqueta = sel ? `${MESES[sel.m - 1]} ${sel.y}` : "Cualquier mes";
 
@@ -246,7 +252,7 @@ export function MonthPicker({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] whitespace-nowrap transition-colors hover:border-brand",
+          "flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] whitespace-nowrap transition-all duration-200 hover:border-brand active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
           open && "border-brand",
           sel ? "font-semibold text-ink" : "text-ink-soft",
           className,
@@ -281,7 +287,7 @@ export function MonthPicker({
                     setOpen(false);
                   }}
                   className={cn(
-                    "cursor-pointer rounded-[11px] py-2 text-[13px] font-semibold capitalize transition-colors",
+                    "cursor-pointer rounded-[11px] py-2 text-[13px] font-semibold capitalize transition-all duration-150 active:scale-95",
                     !isSel && "text-ink hover:bg-brand-soft hover:text-brand",
                     isActual && !isSel && "text-brand ring-1 ring-inset ring-brand/30",
                     isSel && "bg-brand text-white shadow-sm hover:bg-brand",

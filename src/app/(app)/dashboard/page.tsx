@@ -96,15 +96,15 @@ export default async function DashboardPage({
             </ul>
             <span className="mt-1.5 block opacity-80">
               *No se muestran los albaranes para asegurar que no se duplica el importe; para verlos, activa el
-              modo dashboard "a tiempo real".
+              modo dashboard «a tiempo real».
             </span>
           </InfoTip>
           <div className="flex rounded-xl border border-line bg-card p-1">
             <Link
               href={href({ modo: "general" })}
               className={cn(
-                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
-                modo === "general" ? "bg-ink text-white" : "text-ink-soft hover:text-ink",
+                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
+                modo === "general" ? "bg-ink text-white" : "text-ink-soft hover:bg-hover hover:text-ink",
               )}
             >
               General
@@ -112,8 +112,8 @@ export default async function DashboardPage({
             <Link
               href={href({ modo: "real" })}
               className={cn(
-                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
-                modo === "real" ? "bg-ink text-white" : "text-ink-soft hover:text-ink",
+                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
+                modo === "real" ? "bg-ink text-white" : "text-ink-soft hover:bg-hover hover:text-ink",
               )}
             >
               A tiempo real
@@ -149,7 +149,7 @@ export default async function DashboardPage({
             <Link
               href={href({ act: "mensual" })}
               className={cn(
-                "rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors",
+                "rounded-md px-3 py-1 text-[12.5px] font-semibold transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
                 !semanal ? "bg-card shadow-sm" : "text-ink-soft hover:text-ink",
               )}
             >
@@ -158,7 +158,7 @@ export default async function DashboardPage({
             <Link
               href={href({ act: "semanal" })}
               className={cn(
-                "rounded-md px-3 py-1 text-[12.5px] font-semibold transition-colors",
+                "rounded-md px-3 py-1 text-[12.5px] font-semibold transition-all duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none",
                 semanal ? "bg-card shadow-sm" : "text-ink-soft hover:text-ink",
               )}
             >
@@ -178,7 +178,7 @@ export default async function DashboardPage({
                   <span key={delta} className="flex items-center gap-1.5">
                     <Link
                       href={href({ mes: sumarMeses(mes, -1) })}
-                      className="rounded-md px-1.5 py-0.5 text-ink-soft hover:bg-chip hover:text-ink"
+                      className="rounded-md px-1.5 py-0.5 text-ink-soft transition-all duration-150 hover:bg-chip hover:text-ink active:scale-90"
                     >
                       ‹
                     </Link>
@@ -186,7 +186,7 @@ export default async function DashboardPage({
                     {sumarMeses(mes, 1) <= mesActual ? (
                       <Link
                         href={href({ mes: sumarMeses(mes, 1) })}
-                        className="rounded-md px-1.5 py-0.5 text-ink-soft hover:bg-chip hover:text-ink"
+                        className="rounded-md px-1.5 py-0.5 text-ink-soft transition-all duration-150 hover:bg-chip hover:text-ink active:scale-90"
                       >
                         ›
                       </Link>
@@ -204,7 +204,7 @@ export default async function DashboardPage({
                 <Link
                   key={delta}
                   href={href({ mes: m })}
-                  className="rounded-md px-2 py-0.5 text-[12.5px] whitespace-nowrap text-ink-soft hover:bg-chip hover:text-ink max-md:hidden"
+                  className="rounded-md px-2 py-0.5 text-[12.5px] whitespace-nowrap text-ink-soft transition-all duration-150 hover:bg-chip hover:text-ink active:scale-95 max-md:hidden"
                 >
                   {etiquetaCorta(m)}
                 </Link>
@@ -231,7 +231,7 @@ export default async function DashboardPage({
 
       <div className="grid grid-cols-[1.55fr_1fr] items-start gap-3.5 max-lg:grid-cols-1">
         {/* Visión general: barras diarias del mes */}
-        <div className="card p-5.5">
+        <div className="card p-5.5 transition-shadow duration-300 hover:shadow-lift">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-base font-bold tracking-tight">
               {modo === "real" ? "Vista a tiempo real" : "Visión general"}
@@ -269,11 +269,17 @@ export default async function DashboardPage({
                   className="flex h-full flex-1 items-end justify-center gap-px"
                 >
                   <div
-                    className={cn("w-full rounded-t-[3px] bg-[#9CBE8C]", semanal ? "max-w-9" : "max-w-2.5")}
+                    className={cn(
+                      "w-full rounded-t-[3px] bg-[#9CBE8C] transition-[height] duration-500 ease-out anim-grow",
+                      semanal ? "max-w-9" : "max-w-2.5",
+                    )}
                     style={{ height: `${(b.ventas / techo) * 100}%` }}
                   />
                   <div
-                    className={cn("w-full rounded-t-[3px] bg-ink", semanal ? "max-w-9" : "max-w-2.5")}
+                    className={cn(
+                      "w-full rounded-t-[3px] bg-ink transition-[height] duration-500 ease-out anim-grow",
+                      semanal ? "max-w-9" : "max-w-2.5",
+                    )}
                     style={{ height: `${(b.gastos / techo) * 100}%` }}
                   />
                 </div>
@@ -328,7 +334,12 @@ function Kpi({
   destacado?: boolean;
 }) {
   return (
-    <div className={cn("card p-5", destacado && "bg-ink text-white")}>
+    <div
+      className={cn(
+        "card p-5 transition-shadow duration-300 hover:shadow-lift",
+        destacado && "bg-ink text-white",
+      )}
+    >
       <div className="flex items-baseline justify-between">
         <span
           className={cn(
@@ -348,10 +359,10 @@ function Kpi({
 function InfoTip({ children, lado }: { children: React.ReactNode; lado: "izquierda" | "derecha" }) {
   return (
     <span className="group relative inline-flex">
-      <Info className="size-4 cursor-help text-ink-soft/60 hover:text-ink-soft" />
+      <Info className="size-4 cursor-help text-ink-soft/60 transition-colors hover:text-ink-soft" />
       <span
         className={cn(
-          "pointer-events-none absolute top-6 z-30 hidden w-72 rounded-xl bg-ink p-3.5 text-left text-[12px] leading-relaxed text-white shadow-xl group-hover:block",
+          "pointer-events-none invisible absolute top-6 z-30 w-72 translate-y-1 rounded-xl bg-ink p-3.5 text-left text-[12px] leading-relaxed text-white opacity-0 shadow-xl transition-all duration-200 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100",
           lado === "izquierda" ? "right-0" : "left-0",
         )}
       >
