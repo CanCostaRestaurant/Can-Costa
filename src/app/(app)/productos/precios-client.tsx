@@ -2,11 +2,12 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Check, Plus, Search, Store, Trash2 } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { type Producto } from "@/lib/mock";
 import { cn, eur } from "@/lib/utils";
 import { crearProducto, darDeBajaProducto, fijarPrecioPactado } from "./actions";
+import { venderProductoEnTpv } from "./vender-actions";
 
 const FAMILIAS_NUEVO: { valor: Producto["familia"]; label: string }[] = [
   { valor: "bebida", label: "Bebidas" },
@@ -325,6 +326,34 @@ function HistPanel({ producto: p }: { producto: Producto }) {
     p.precioPactado !== null && p.precioPactado !== undefined ? String(p.precioPactado) : "",
   );
 
+  // Vender en el TPV: crea/actualiza una bebida con este producto y su PVP.
+  const [vendiendo, setVendiendo] = useState(false);
+  const [pvpVenta, setPvpVenta] = useState("");
+  const [emojiVenta, setEmojiVenta] = useState("🥤");
+  const [guardandoVenta, startVenta] = useTransition();
+  const [ventaOk, setVentaOk] = useState<string | null>(null);
+  const [errorVenta, setErrorVenta] = useState<string | null>(null);
+
+  function guardarVenta() {
+    const pvp = parseFloat(pvpVenta.replace(",", "."));
+    if (!Number.isFinite(pvp) || pvp <= 0) {
+      setErrorVenta("Pon un precio de venta válido");
+      return;
+    }
+    setErrorVenta(null);
+    startVenta(async () => {
+      const res = await venderProductoEnTpv(p.id, { pvp, emoji: emojiVenta || undefined });
+      if (!res.ok) {
+        setErrorVenta(res.error ?? "No se pudo guardar");
+        return;
+      }
+      setVentaOk(`Se vende en el TPV a ${eur(pvp)}`);
+      setVendiendo(false);
+      setPvpVenta("");
+      router.refresh();
+    });
+  }
+
   const min = Math.min(...p.hist);
   const max = Math.max(...p.hist);
   const rng = max - min || 1;
@@ -398,6 +427,80 @@ function HistPanel({ producto: p }: { producto: Producto }) {
           </div>
         </div>
       )}
+
+      {/* Vender en el TPV: convierte el producto en una bebida con PVP */}
+      <div className="mb-4 rounded-xl border border-line p-3.5">
+        <div className="flex items-center gap-2 text-[12.5px] font-semibold">
+          <Store className="size-4 text-brand" /> Vender en el TPV
+        </div>
+        {ventaOk ? (
+          <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-good-soft px-3 py-2 text-[12.5px] font-semibold text-good">
+            <Check className="size-4 shrink-0" /> {ventaOk}
+          </div>
+        ) : vendiendo ? (
+          <div className="mt-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={emojiVenta}
+                onChange={(e) => setEmojiVenta(e.target.value)}
+                maxLength={2}
+                aria-label="Emoji"
+                className="w-12 rounded-lg border border-line bg-card px-2 py-1.5 text-center text-base outline-none focus:border-brand"
+              />
+              <span className="flex items-center gap-1">
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={pvpVenta}
+                  onChange={(e) => setPvpVenta(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && guardarVenta()}
+                  placeholder="precio venta"
+                  autoFocus
+                  className="w-28 rounded-lg border border-line bg-card px-2 py-1.5 text-sm outline-none focus:border-brand"
+                />
+                <span className="text-sm text-ink-soft">€</span>
+              </span>
+              <button
+                onClick={guardarVenta}
+                disabled={guardandoVenta || !pvpVenta.trim()}
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-black disabled:opacity-40"
+              >
+                {guardandoVenta ? "Guardando…" : "Guardar"}
+              </button>
+              <button
+                onClick={() => {
+                  setVendiendo(false);
+                  setErrorVenta(null);
+                }}
+                className="cursor-pointer rounded-lg px-2 py-1.5 text-[12.5px] font-semibold text-ink-soft transition-colors hover:text-ink"
+              >
+                Cancelar
+              </button>
+            </div>
+            {errorVenta && <p className="mt-1.5 text-[11.5px] font-semibold text-bad">{errorVenta}</p>}
+            <p className="mt-1.5 text-[11px] leading-snug text-ink-soft">
+              Crea una <b className="text-ink">bebida</b> con este producto como coste. Aparece en el TPV y en
+              Escandallos, y calcula el margen.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-1.5">
+            <p className="text-[11.5px] leading-snug text-ink-soft">
+              Ponle precio de venta para cobrarlo directamente desde el TPV.
+            </p>
+            <button
+              onClick={() => {
+                setVendiendo(true);
+                setErrorVenta(null);
+              }}
+              className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand px-3.5 py-1.5 text-[12.5px] font-semibold text-white transition-all hover:opacity-90 active:scale-[0.98]"
+            >
+              <Store className="size-3.5" /> Poner precio de venta
+            </button>
+          </div>
+        )}
+      </div>
 
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-[130px] w-full overflow-visible">
         <polygon points={`${pad},${H} ${linea} ${W - pad},${H}`} fill={color} opacity="0.08" />
