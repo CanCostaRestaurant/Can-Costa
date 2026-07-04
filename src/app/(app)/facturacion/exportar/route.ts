@@ -12,6 +12,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { and, asc, eq, gte, lt, sql } from "drizzle-orm";
 import { conPlazo, getDb, schema } from "@/lib/db";
 import {
+  condTicketsSinFactura,
   etiquetaPeriodo,
   getAjustes,
   PERIODO_VALIDO,
@@ -76,13 +77,9 @@ export async function GET(req: NextRequest) {
             total: sql<string>`coalesce(sum(${schema.tickets.total}), 0)`,
           })
           .from(schema.tickets)
-          .where(
-            and(
-              eq(schema.tickets.estado, "cobrado"),
-              sql`(${schema.tickets.cobradoAt} at time zone 'Europe/Madrid')::date >= ${desde}::date`,
-              sql`(${schema.tickets.cobradoAt} at time zone 'Europe/Madrid')::date < ${hasta}::date`,
-            ),
-          )
+          // Excluye los tickets con factura emitida: su venta va en la factura
+          // (si contaran aquí también, el gestor la sumaría dos veces).
+          .where(condTicketsSinFactura(desde, hasta))
           .groupBy(diaMadrid)
           .orderBy(diaMadrid),
       ]),
@@ -186,15 +183,39 @@ export async function GET(req: NextRequest) {
       ),
     });
 
+    // ── Resumen del período: los números que declara el gestor, ya cuadrados ──
+    const emitidasVivas = emitidas.filter((f) => f.estado === "emitida");
+    const factBase = emitidasVivas.reduce((a, f) => a + Number(f.base), 0);
+    const factIva = emitidasVivas.reduce((a, f) => a + Number(f.iva), 0);
+    const factTotal = emitidasVivas.reduce((a, f) => a + Number(f.total), 0);
+    const tickTotal = ventasDias.reduce((a, v) => a + Number(v.total), 0);
+    const tickBase = Math.round((tickTotal / (1 + pct / 100)) * 100) / 100;
+    const tickIva = Math.round((tickTotal - tickBase) * 100) / 100;
+    const tickN = ventasDias.reduce((a, v) => a + v.tickets, 0);
+    entradas.push({
+      nombre: "resumen-del-periodo.csv",
+      datos: csv(
+        ["Concepto", "Base", "Cuota IVA", "Total"],
+        [
+          [`Ventas en tickets (${tickN} tickets, sin los facturados)`, tickBase, tickIva, tickTotal],
+          [`Ventas con factura emitida (${emitidasVivas.length} facturas)`, factBase, factIva, factTotal],
+          ["TOTAL VENTAS del período", tickBase + factBase, tickIva + factIva, tickTotal + factTotal],
+        ],
+      ),
+    });
+
     entradas.push({
       nombre: "LEEME.txt",
       datos: Buffer.from(
         `Export para la gestoría — ${local.nombre}\r\n` +
           `Período: ${etiquetaPeriodo(periodo)} (${desde} a ${hasta}, este último excluido)\r\n\r\n` +
+          `- resumen-del-periodo.csv     Los totales de ventas del período: tickets + facturas emitidas = total, SIN duplicar\r\n` +
           `- facturas-emitidas/          PDF de cada factura emitida a clientes (las anuladas van marcadas y no computan)\r\n` +
           `- facturas-emitidas.csv       Libro registro de facturas expedidas (una por línea)\r\n` +
           `- facturas-recibidas.csv      Facturas y albaranes de compra registrados; los documentos originales están en el buzón de correo o en papel\r\n` +
           `- ventas-diarias-tickets.csv  Ventas por tickets (facturas simplificadas) como asiento resumen diario, con base y cuota de IVA\r\n\r\n` +
+          `IMPORTANTE: los tickets a los que se les emitió factura NO están en ventas-diarias-tickets.csv\r\n` +
+          `(su venta viaja en la factura correspondiente), así que tickets + facturas suman el total real sin duplicados.\r\n\r\n` +
           `Los CSV usan ";" como separador y coma decimal (se abren directamente con Excel en español).\r\n`,
         "utf8",
       ),

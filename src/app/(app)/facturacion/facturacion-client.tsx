@@ -82,11 +82,25 @@ export function FacturacionClient({
         }
       />
 
-      {/* Totales del mes */}
+      {/* Resumen del período para declarar: los tickets facturados NO cuentan
+          en "tickets" (su venta viaja en la factura) → no se duplica nada. */}
       <div className="mb-4 grid grid-cols-3 gap-3 max-sm:grid-cols-1">
-        <Kpi etiqueta="Base imponible" valor={eur(datos.totalBase)} />
-        <Kpi etiqueta="IVA repercutido" valor={eur(datos.totalIva)} />
-        <Kpi etiqueta="Total facturado" valor={eur(datos.total)} destacado />
+        <Kpi
+          etiqueta={`Ventas en tickets · ${datos.ventasTickets.tickets}`}
+          valor={eur(datos.ventasTickets.total)}
+          detalle={`base ${eur(datos.ventasTickets.base)} · IVA ${datos.ventasTickets.ivaPct}% ${eur(datos.ventasTickets.iva)}`}
+        />
+        <Kpi
+          etiqueta={`Con factura emitida · ${datos.filas.filter((f) => f.estado === "emitida").length}`}
+          valor={eur(datos.total)}
+          detalle={`base ${eur(datos.totalBase)} · IVA ${eur(datos.totalIva)}`}
+        />
+        <Kpi
+          etiqueta="Total ventas del período"
+          valor={eur(datos.ventasTickets.total + datos.total)}
+          detalle={`IVA repercutido ${eur(datos.ventasTickets.iva + datos.totalIva)} · sin duplicar tickets facturados`}
+          destacado
+        />
       </div>
 
       <div className="card overflow-hidden">
@@ -160,13 +174,24 @@ export function FacturacionClient({
   );
 }
 
-function Kpi({ etiqueta, valor, destacado }: { etiqueta: string; valor: string; destacado?: boolean }) {
+function Kpi({
+  etiqueta,
+  valor,
+  detalle,
+  destacado,
+}: {
+  etiqueta: string;
+  valor: string;
+  detalle?: string;
+  destacado?: boolean;
+}) {
   return (
     <div className={cn("card p-4", destacado && "bg-brand-soft")}>
       <div className="text-[11px] font-semibold tracking-wider text-ink-soft uppercase">{etiqueta}</div>
       <div className={cn("mt-0.5 font-display text-[22px] font-bold tracking-tight", destacado && "text-brand")}>
         {valor}
       </div>
+      {detalle && <div className="mt-0.5 text-[11.5px] text-ink-soft">{detalle}</div>}
     </div>
   );
 }
