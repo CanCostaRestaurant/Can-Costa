@@ -391,11 +391,26 @@ export const cierresCaja = pgTable("cierres_caja", {
   efectivoEsperado: numeric("efectivo_esperado", { precision: 12, scale: 2 }).notNull(),
   tarjetaEsperada: numeric("tarjeta_esperada", { precision: 12, scale: 2 }).notNull(),
   fondoAnterior: numeric("fondo_anterior", { precision: 12, scale: 2 }).notNull().default("0"),
+  retiradas: numeric("retiradas", { precision: 12, scale: 2 }).notNull().default("0"), // efectivo sacado del cajón durante el día
   notas: text("notas"),
   cerradoPor: text("cerrado_por"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Retiradas de efectivo del cajón durante el día (pagar a un proveedor en
+// mano, sacar cambio, etc.). Bajan el efectivo esperado en el cierre.
+export const retiradasCaja = pgTable(
+  "retiradas_caja",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    fecha: date("fecha").notNull(),
+    importe: numeric("importe", { precision: 12, scale: 2 }).notNull(),
+    motivo: text("motivo"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("retiradas_caja_fecha_idx").on(t.fecha)],
+);
 
 // Cada línea congela descripción y PVP del momento de la comanda.
 export const ticketLineas = pgTable(

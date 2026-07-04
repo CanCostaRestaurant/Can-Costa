@@ -2254,6 +2254,8 @@ export async function getPersonalMes(mes: string): Promise<PersonalMes> {
 // Cierre de caja: cuadre diario de efectivo y datafono contra el TPV
 // ---------------------------------------------------------------------
 
+export type RetiradaCaja = { id: string; importe: number; motivo: string | null; hora: string };
+
 export type CierreDia = {
   fecha: string;
   ticketsAbiertos: { id: string; mesa: string; total: number }[]; // bloquean el cierre
@@ -2262,6 +2264,8 @@ export type CierreDia = {
   efectivoEsperado: number; // ventas en efectivo del dia
   tarjetaEsperada: number; // ventas en tarjeta del dia
   fondoAnterior: number; // fondo que dejo el ultimo cierre anterior
+  retiradas: RetiradaCaja[]; // efectivo sacado del cajon durante el dia
+  retiradasTotal: number;
   cierre: {
     efectivoContado: number;
     datafono: number;
@@ -2269,6 +2273,7 @@ export type CierreDia = {
     efectivoEsperado: number;
     tarjetaEsperada: number;
     fondoAnterior: number;
+    retiradas: number;
     notas: string | null;
     cerradoPor: string | null;
     actualizado: string;
@@ -2284,6 +2289,8 @@ export async function getCierreDia(fecha: string): Promise<CierreDia> {
     efectivoEsperado: 0,
     tarjetaEsperada: 0,
     fondoAnterior: 0,
+    retiradas: [],
+    retiradasTotal: 0,
     cierre: null,
   };
   const db = getDb();
@@ -2295,7 +2302,7 @@ export async function getCierreDia(fecha: string): Promise<CierreDia> {
         const desde = new Date(fecha + "T00:00:00Z");
         const hasta = new Date(desde.getTime() + 86_400_000);
 
-        const [abiertos, cobrados, [cierreFila], [previo]] = await Promise.all([
+        const [abiertos, cobrados, [cierreFila], [previo], retiradasFilas] = await Promise.all([
           db
             .select({ ticket: schema.tickets, mesaNombre: schema.mesas.nombre })
             .from(schema.tickets)
@@ -2318,6 +2325,11 @@ export async function getCierreDia(fecha: string): Promise<CierreDia> {
             .where(lt(schema.cierresCaja.fecha, fecha))
             .orderBy(desc(schema.cierresCaja.fecha))
             .limit(1),
+          db
+            .select()
+            .from(schema.retiradasCaja)
+            .where(eq(schema.retiradasCaja.fecha, fecha))
+            .orderBy(asc(schema.retiradasCaja.createdAt)),
         ]);
 
         // Totales de los abiertos (suma de sus lineas)
@@ -2359,6 +2371,17 @@ export async function getCierreDia(fecha: string): Promise<CierreDia> {
           efectivoEsperado,
           tarjetaEsperada,
           fondoAnterior: previo ? Number(previo.fondoSiguiente) : 0,
+          retiradas: retiradasFilas.map((r) => ({
+            id: r.id,
+            importe: Number(r.importe),
+            motivo: r.motivo,
+            hora: new Intl.DateTimeFormat("es-ES", {
+              timeZone: "Europe/Madrid",
+              hour: "2-digit",
+              minute: "2-digit",
+            }).format(r.createdAt),
+          })),
+          retiradasTotal: retiradasFilas.reduce((acc, r) => acc + Number(r.importe), 0),
           cierre: cierreFila
             ? {
                 efectivoContado: Number(cierreFila.efectivoContado),
@@ -2367,6 +2390,7 @@ export async function getCierreDia(fecha: string): Promise<CierreDia> {
                 efectivoEsperado: Number(cierreFila.efectivoEsperado),
                 tarjetaEsperada: Number(cierreFila.tarjetaEsperada),
                 fondoAnterior: Number(cierreFila.fondoAnterior),
+                retiradas: Number(cierreFila.retiradas),
                 notas: cierreFila.notas,
                 cerradoPor: cierreFila.cerradoPor,
                 actualizado: new Intl.DateTimeFormat("es-ES", {
@@ -2394,12 +2418,13 @@ export type CierreHistorico = {
   fecha: string; // ISO, para navegar a ?dia=
   fechaLegible: string;
   efectivoContado: number;
-  efectivoEsperado: number; // fondo anterior + ventas efectivo (snapshot)
+  efectivoEsperado: number; // fondo anterior + ventas efectivo − retiradas (snapshot)
   difEfectivo: number;
   datafono: number;
   tarjetaEsperada: number;
   difTarjeta: number;
   fondoSiguiente: number;
+  retiradas: number;
   cerradoPor: string | null;
   notas: string | null;
 };
@@ -2416,7 +2441,7 @@ export async function getCierresHistorico(limite = 30): Promise<CierreHistorico[
           .orderBy(desc(schema.cierresCaja.fecha))
           .limit(limite);
         return filas.map((c) => {
-          const esperadoCajon = Number(c.fondoAnterior) + Number(c.efectivoEsperado);
+          const esperadoCajon = Number(c.fondoAnterior) + Number(c.efectivoEsperado) - Number(c.retiradas);
           return {
             fecha: c.fecha,
             fechaLegible: fechaLegible(c.fecha),
@@ -2427,6 +2452,7 @@ export async function getCierresHistorico(limite = 30): Promise<CierreHistorico[
             tarjetaEsperada: Number(c.tarjetaEsperada),
             difTarjeta: Number(c.datafono) - Number(c.tarjetaEsperada),
             fondoSiguiente: Number(c.fondoSiguiente),
+            retiradas: Number(c.retiradas),
             cerradoPor: c.cerradoPor,
             notas: c.notas,
           };
