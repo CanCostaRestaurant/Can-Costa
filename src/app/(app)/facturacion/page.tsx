@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { COOKIE_SESION, verificarSesion, type RolUsuario } from "@/lib/auth";
-import { getFacturasEmitidas } from "@/lib/db/queries";
+import { getFacturasEmitidas, PERIODO_VALIDO } from "@/lib/db/queries";
 import { FacturacionClient } from "./facturacion-client";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +21,14 @@ function mesActualMadrid(): string {
     .slice(0, 7);
 }
 
-export default async function FacturacionPage({ searchParams }: { searchParams: Promise<{ mes?: string }> }) {
-  const { mes } = await searchParams;
-  const elegido = mes && /^\d{4}-\d{2}$/.test(mes) ? mes : mesActualMadrid();
+export default async function FacturacionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ periodo?: string; mes?: string }>;
+}) {
+  const { periodo, mes } = await searchParams;
+  const pedido = periodo ?? mes; // ?mes= se mantiene por compatibilidad
+  const elegido = pedido && PERIODO_VALIDO.test(pedido) ? pedido : mesActualMadrid();
   const [datos, rol] = await Promise.all([getFacturasEmitidas(elegido), rolActual()]);
   return <FacturacionClient datos={datos} puedeRecibidas={rol === "admin" || rol === "gestor"} />;
 }

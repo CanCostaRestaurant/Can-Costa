@@ -1858,25 +1858,57 @@ export type FacturaEmitidaFila = {
 };
 
 export type FacturasEmitidas = {
-  mes: string; // "YYYY-MM"
-  etiquetaMes: string; // "julio 2026"
+  periodo: string; // "YYYY-MM" (mes) o "YYYY-Tn" (trimestre)
+  etiquetaPeriodo: string; // "julio de 2026" / "3er trimestre 2026"
   filas: FacturaEmitidaFila[];
   totalBase: number;
   totalIva: number;
   total: number; // suma de emitidas (las anuladas no cuentan)
-  meses: { valor: string; etiqueta: string }[]; // meses con facturas, para el selector
+  // Períodos con facturas para el selector: trimestres primero, luego meses.
+  trimestres: { valor: string; etiqueta: string }[];
+  meses: { valor: string; etiqueta: string }[];
 };
 
-export async function getFacturasEmitidas(mes: string): Promise<FacturasEmitidas> {
-  const etiqueta = (m: string) =>
-    new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric" }).format(new Date(m + "-01T12:00:00"));
+export const PERIODO_VALIDO = /^\d{4}-(0[1-9]|1[0-2]|T[1-4])$/;
+
+// Rango [desde, hasta) en fechas ISO de un período mes o trimestre.
+export function rangoPeriodo(periodo: string): { desde: string; hasta: string } {
+  const anio = Number(periodo.slice(0, 4));
+  if (periodo.includes("T")) {
+    const t = Number(periodo.slice(6)); // 1-4
+    const mesIni = (t - 1) * 3 + 1;
+    const desde = `${anio}-${String(mesIni).padStart(2, "0")}-01`;
+    const hasta = t === 4 ? `${anio + 1}-01-01` : `${anio}-${String(mesIni + 3).padStart(2, "0")}-01`;
+    return { desde, hasta };
+  }
+  const m = Number(periodo.slice(5, 7));
+  return {
+    desde: `${periodo}-01`,
+    hasta: m === 12 ? `${anio + 1}-01-01` : `${anio}-${String(m + 1).padStart(2, "0")}-01`,
+  };
+}
+
+const ORDINAL_TRIMESTRE = ["1er", "2º", "3er", "4º"];
+
+export function etiquetaPeriodo(periodo: string): string {
+  if (periodo.includes("T")) {
+    const t = Number(periodo.slice(6));
+    return `${ORDINAL_TRIMESTRE[t - 1]} trimestre ${periodo.slice(0, 4)}`;
+  }
+  return new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric" }).format(
+    new Date(periodo + "-01T12:00:00"),
+  );
+}
+
+export async function getFacturasEmitidas(periodo: string): Promise<FacturasEmitidas> {
   const vacio: FacturasEmitidas = {
-    mes,
-    etiquetaMes: etiqueta(mes),
+    periodo,
+    etiquetaPeriodo: etiquetaPeriodo(periodo),
     filas: [],
     totalBase: 0,
     totalIva: 0,
     total: 0,
+    trimestres: [],
     meses: [],
   };
   const db = getDb();
@@ -1884,9 +1916,7 @@ export async function getFacturasEmitidas(mes: string): Promise<FacturasEmitidas
   try {
     return await conPlazo(
       (async (): Promise<FacturasEmitidas> => {
-        const [anio, m] = mes.split("-").map(Number);
-        const desde = `${mes}-01`;
-        const hasta = m === 12 ? `${anio + 1}-01-01` : `${anio}-${String(m + 1).padStart(2, "0")}-01`;
+        const { desde, hasta } = rangoPeriodo(periodo);
         const [filas, mesesRaw] = await Promise.all([
           db
             .select()
@@ -1914,14 +1944,18 @@ export async function getFacturasEmitidas(mes: string): Promise<FacturasEmitidas
         }));
         const emitidas = rows.filter((r) => r.estado === "emitida");
 
+        // Trimestres derivados de los meses con facturas (más recientes primero).
+        const trimestres = [...new Set(mesesRaw.map((m) => `${m.mes.slice(0, 4)}-T${Math.ceil(Number(m.mes.slice(5, 7)) / 3)}`))];
+
         return {
-          mes,
-          etiquetaMes: etiqueta(mes),
+          periodo,
+          etiquetaPeriodo: etiquetaPeriodo(periodo),
           filas: rows,
           totalBase: emitidas.reduce((a, r) => a + r.base, 0),
           totalIva: emitidas.reduce((a, r) => a + r.iva, 0),
           total: emitidas.reduce((a, r) => a + r.total, 0),
-          meses: mesesRaw.map((m) => ({ valor: m.mes, etiqueta: etiqueta(m.mes) })),
+          trimestres: trimestres.map((t) => ({ valor: t, etiqueta: etiquetaPeriodo(t) })),
+          meses: mesesRaw.map((m) => ({ valor: m.mes, etiqueta: etiquetaPeriodo(m.mes) })),
         };
       })(),
     );

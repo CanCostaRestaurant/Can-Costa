@@ -4,7 +4,7 @@
 // como en Dogterra). No suma a la facturación del dashboard (eso ya lo cuentan
 // los tickets): aquí solo se listan las facturas formales emitidas.
 import { useRouter } from "next/navigation";
-import { FileText } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import { PageHead, Chip } from "@/components/ui";
 import { SeccionesDocumentos } from "@/components/secciones-documentos";
 import { type FacturasEmitidas } from "@/lib/db/queries";
@@ -19,30 +19,66 @@ export function FacturacionClient({
 }) {
   const router = useRouter();
 
-  // El mes elegido puede no estar entre los que tienen facturas (mes vacío):
-  // lo añadimos al selector para que no "salte" a otro.
-  const meses = datos.meses.some((m) => m.valor === datos.mes)
-    ? datos.meses
-    : [{ valor: datos.mes, etiqueta: datos.etiquetaMes }, ...datos.meses];
+  // El período elegido (mes o trimestre) puede no estar entre los que tienen
+  // facturas (período vacío): lo añadimos al selector para que no "salte".
+  const esTrimestre = datos.periodo.includes("T");
+  const anio = datos.periodo.slice(0, 4);
+  // El trimestre del período visible siempre está en el selector, con facturas o sin.
+  const triActual = esTrimestre
+    ? datos.periodo
+    : `${anio}-T${Math.ceil(Number(datos.periodo.slice(5, 7)) / 3)}`;
+  const trimestres = datos.trimestres.some((t) => t.valor === triActual)
+    ? datos.trimestres
+    : [
+        {
+          valor: triActual,
+          etiqueta: `${["1er", "2º", "3er", "4º"][Number(triActual.slice(6)) - 1]} trimestre ${anio}`,
+        },
+        ...datos.trimestres,
+      ];
+  const meses =
+    esTrimestre || datos.meses.some((m) => m.valor === datos.periodo)
+      ? datos.meses
+      : [{ valor: datos.periodo, etiqueta: datos.etiquetaPeriodo }, ...datos.meses];
 
   return (
     <section className="anim-in">
-      <SeccionesDocumentos activa="emitidas" mostrarRecibidas={puedeRecibidas} />
+      <SeccionesDocumentos activa="emitidas" mostrarRecibidas={puedeRecibidas} mostrarBanco={puedeRecibidas} />
       <PageHead
         titulo="Facturación"
         subtitulo="Facturas emitidas a clientes que las pidieron — para la declaración"
         derecha={
-          <select
-            value={datos.mes}
-            onChange={(e) => router.push(`/facturacion?mes=${e.target.value}`)}
-            className="cursor-pointer rounded-full border border-line bg-card px-4 py-2 text-[13.5px] font-semibold capitalize outline-none focus:border-brand"
-          >
-            {meses.map((m) => (
-              <option key={m.valor} value={m.valor}>
-                {m.etiqueta}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={datos.periodo}
+              onChange={(e) => router.push(`/facturacion?periodo=${e.target.value}`)}
+              className="cursor-pointer rounded-full border border-line bg-card px-4 py-2 text-[13.5px] font-semibold capitalize outline-none focus:border-brand"
+            >
+              <optgroup label="Por trimestre">
+                {trimestres.map((t) => (
+                  <option key={t.valor} value={t.valor}>
+                    {t.etiqueta}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Por mes">
+                {meses.map((m) => (
+                  <option key={m.valor} value={m.valor}>
+                    {m.etiqueta}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            {/* Descarga del período para la gestoría: ZIP con los PDF de las
+                emitidas + CSV de emitidas, recibidas y ventas diarias (tickets). */}
+            <a
+              href={`/facturacion/exportar?periodo=${datos.periodo}`}
+              title="Descargar el período para la gestoría (PDFs + CSVs)"
+              className="flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap text-white transition-colors hover:bg-black"
+            >
+              <Download className="size-4" /> Descargar ZIP
+            </a>
+          </div>
         }
       />
 
@@ -56,7 +92,7 @@ export function FacturacionClient({
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <span className="text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
-            Facturas de {datos.etiquetaMes}
+            Facturas · {datos.etiquetaPeriodo}
           </span>
           <span className="text-[11.5px] tracking-wider text-ink-soft uppercase">
             {datos.filas.length} {datos.filas.length === 1 ? "factura" : "facturas"}
@@ -65,7 +101,7 @@ export function FacturacionClient({
 
         {datos.filas.length === 0 ? (
           <div className="px-4 py-10 text-center text-[13.5px] text-ink-soft">
-            No hay facturas emitidas este mes. Se generan desde el recibo de un ticket cobrado.
+            No hay facturas emitidas en este período. Se generan desde el recibo de un ticket cobrado.
           </div>
         ) : (
           <div className="overflow-x-auto">
