@@ -25,7 +25,10 @@ function tonoFoodCost(fc: number | null): "good" | "warn" | "bad" | "gray" {
 
 export default async function EscandallosPage() {
   const todos = await getPlatosResumen();
-  const platos = todos.filter((p) => !p.esPreparacion && p.tipoPlato !== "bebida");
+  const platos = todos.filter(
+    (p) => !p.esPreparacion && p.tipoPlato !== "bebida" && p.tipoPlato !== "postre",
+  );
+  const postres = todos.filter((p) => !p.esPreparacion && p.tipoPlato === "postre");
   const bebidas = todos.filter((p) => !p.esPreparacion && p.tipoPlato === "bebida");
   const preparaciones = todos.filter((p) => p.esPreparacion);
   const conAviso = todos.filter((p) => p.aviso);
@@ -56,8 +59,8 @@ export default async function EscandallosPage() {
         </div>
       )}
 
-      {/* Platos: solo etiquetamos cuando hay bebidas, para no ensuciar */}
-      {bebidas.length > 0 && (
+      {/* Etiquetamos "Platos" solo cuando hay otros grupos, para no ensuciar */}
+      {(bebidas.length > 0 || postres.length > 0) && (
         <h3 className="mb-3 font-display text-[17px] font-bold tracking-tight">Platos</h3>
       )}
       <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-2 max-sm:grid-cols-1">
@@ -70,6 +73,17 @@ export default async function EscandallosPage() {
           </div>
         )}
       </div>
+
+      {postres.length > 0 && (
+        <>
+          <h3 className="mt-7 mb-3 font-display text-[17px] font-bold tracking-tight">Postres</h3>
+          <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-2 max-sm:grid-cols-1">
+            {postres.map((postre, i) => (
+              <TarjetaPlato key={postre.id} plato={postre} i={i} />
+            ))}
+          </div>
+        </>
+      )}
 
       {bebidas.length > 0 && (
         <>

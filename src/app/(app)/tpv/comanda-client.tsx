@@ -335,7 +335,7 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
             <h3 className="mb-3 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">Platos</h3>
             <div className="grid grid-cols-3 gap-2 max-lg:grid-cols-2">
               {platos
-                .filter((p) => p.tipo !== "bebida")
+                .filter((p) => p.tipo !== "bebida" && p.tipo !== "postre")
                 .map((p) => (
                 <button
                   key={p.id}
@@ -351,6 +351,33 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
               ))}
             </div>
           </div>
+
+          {platos.some((p) => p.tipo === "postre" && p.pvp !== null) && (
+            <div className="card p-4">
+              <h3 className="mb-3 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
+                Postres
+              </h3>
+              <div className="grid grid-cols-3 gap-2 max-lg:grid-cols-2">
+                {platos
+                  .filter((p) => p.tipo === "postre" && p.pvp !== null)
+                  .map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => anadirPlato(d)}
+                      className="flex min-h-13 cursor-pointer items-center justify-between gap-2 rounded-xl border border-line bg-card px-3 py-2 transition-all hover:border-brand active:scale-[0.98]"
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="shrink-0">{d.emoji}</span>
+                        <span className="truncate text-[13px] font-semibold">{d.nombre}</span>
+                      </span>
+                      <span className="shrink-0 font-display text-[13px] font-bold text-ink-soft">
+                        {eur(d.pvp ?? 0)}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
 
           <div className="card p-4">
             <h3 className="mb-3 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
