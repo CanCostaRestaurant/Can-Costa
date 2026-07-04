@@ -6,11 +6,21 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Banknote, Calculator, CreditCard, Lock, Minus, Plus, TriangleAlert, X } from "lucide-react";
+import { Banknote, Calculator, CreditCard, Lock, Minus, Plus, Printer, TriangleAlert, Users, X } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { type CierreDia } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
 import { cerrarCaja, crearRetirada, eliminarRetirada } from "../tpv/cierre/actions";
+
+export type TicketDia = {
+  id: string;
+  hora: string;
+  mesa: string;
+  comensales: number | null;
+  metodo: string | null;
+  total: number;
+  numLineas: number;
+};
 
 // Denominaciones de euro en céntimos (evita líos de coma flotante al sumar).
 const BILLETES = [50000, 20000, 10000, 5000, 2000, 1000, 500] as const;
@@ -20,7 +30,7 @@ function etiquetaDenom(c: number): string {
   return c >= 100 ? `${c / 100} €` : `${c} c`;
 }
 
-export function CajaDelDia({ datos }: { datos: CierreDia }) {
+export function CajaDelDia({ datos, tickets }: { datos: CierreDia; tickets: TicketDia[] }) {
   const router = useRouter();
   const [ocupado, startAccion] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -211,7 +221,8 @@ export function CajaDelDia({ datos }: { datos: CierreDia }) {
         )}
       </div>
 
-      {/* ── Retiradas de efectivo ── */}
+      {/* ── Columna derecha: retiradas + tickets del día ── */}
+      <div className="flex flex-col gap-3.5">
       <div className="card p-5">
         <div className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
           <Minus className="size-4 text-ink-soft" /> Retiradas de efectivo
@@ -291,6 +302,59 @@ export function CajaDelDia({ datos }: { datos: CierreDia }) {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Tickets del día */}
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
+          <span className="flex items-center gap-2 font-display text-base font-bold tracking-tight">
+            Tickets del día
+          </span>
+          <span className="text-[12px] text-ink-soft">
+            {tickets.length} {tickets.length === 1 ? "ticket" : "tickets"}
+          </span>
+        </div>
+        {tickets.length === 0 ? (
+          <p className="px-4 py-6 text-center text-[13px] text-ink-soft">Sin tickets cobrados este día.</p>
+        ) : (
+          <table className="w-full border-collapse">
+            <tbody>
+              {tickets.map((t) => (
+                <tr key={t.id} className="border-b border-line last:border-none hover:bg-hover">
+                  <td className="px-3 py-2.5 text-[13px] text-ink-soft whitespace-nowrap">{t.hora}</td>
+                  <td className="px-2 py-2.5 text-[13px] font-semibold">{t.mesa}</td>
+                  <td className="px-2 py-2.5 text-[13px] text-ink-soft">
+                    <span className="flex items-center gap-1">
+                      <Users className="size-3" /> {t.comensales ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-2 py-2.5">
+                    {t.metodo === "efectivo" ? (
+                      <Banknote className="size-4 text-good" aria-label="Efectivo" />
+                    ) : t.metodo === "tarjeta" ? (
+                      <CreditCard className="size-4 text-ink-soft" aria-label="Tarjeta" />
+                    ) : (
+                      <span className="text-[11px] text-ink-soft">mixto</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-2.5 text-right font-display text-[13.5px] font-bold whitespace-nowrap">
+                    {eur(t.total)}
+                  </td>
+                  <td className="px-2 py-2.5 text-right">
+                    <Link
+                      href={`/tpv/recibo/${t.id}`}
+                      title="Ver / imprimir ticket"
+                      className="inline-grid size-7 cursor-pointer place-items-center rounded-lg text-ink-soft transition-colors hover:bg-chip hover:text-ink"
+                    >
+                      <Printer className="size-3.5" />
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
       </div>
     </div>
   );

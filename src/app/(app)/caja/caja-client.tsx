@@ -8,15 +8,17 @@ import { PageHead, Chip } from "@/components/ui";
 import { DatePicker } from "@/components/date-picker";
 import { type CierreDia, type CierreHistorico } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
-import { CajaDelDia } from "./caja-del-dia";
+import { CajaDelDia, type TicketDia } from "./caja-del-dia";
 
 export function CajaClient({
   caja,
   cajas,
+  tickets,
   hoy,
 }: {
   caja: CierreDia;
   cajas: CierreHistorico[];
+  tickets: TicketDia[];
   hoy: string;
 }) {
   const router = useRouter();
@@ -34,7 +36,7 @@ export function CajaClient({
       />
 
       <div className="mb-3.5">
-        <CajaDelDia datos={caja} />
+        <CajaDelDia datos={caja} tickets={tickets} />
       </div>
 
       {/* Histórico de cierres */}
