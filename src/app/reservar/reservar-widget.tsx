@@ -126,9 +126,11 @@ export function ReservarWidget({
         </div>
 
         <p className="mt-4 text-[12.5px] text-ink-soft">
-          {email ? "Te hemos enviado la confirmación por email." : ""}
-          {email && tel ? " " : ""}
-          {tel ? "Te avisaremos por SMS." : ""}
+          {hecho.emailEnviado || hecho.smsEnviado
+            ? `Te hemos enviado la confirmación${hecho.emailEnviado ? " por email" : ""}${
+                hecho.emailEnviado && hecho.smsEnviado ? " y" : ""
+              }${hecho.smsEnviado ? " por SMS" : ""}.`
+            : "Apunta la reserva o añádela a tu calendario para no olvidarla."}
         </p>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">

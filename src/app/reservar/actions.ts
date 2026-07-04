@@ -95,6 +95,8 @@ export type ResultadoReservaWeb = {
   fecha?: string;
   hora?: string;
   comensales?: number;
+  emailEnviado?: boolean; // solo true si la confirmación salió de verdad
+  smsEnviado?: boolean;
 };
 
 export async function reservarPublica(datos: {
@@ -233,6 +235,8 @@ export async function reservarPublica(datos: {
       fecha: datos.fecha,
       hora: datos.hora,
       comensales: pax,
+      emailEnviado: Boolean(resEmail?.enviado),
+      smsEnviado: Boolean(resSms?.enviado),
     };
   } catch (e) {
     console.error("[reservar] reservarPublica falló:", e instanceof Error ? e.message : e);
