@@ -14,21 +14,23 @@ function tiempo(minutos: number): string {
   return `${Math.floor(minutos / 60)}h ${String(minutos % 60).padStart(2, "0")}m`;
 }
 
-// Tamaño y forma de cada mesa en el plano (según capacidad y forma real).
-// Tres tamaños: escritorio/tablet grande (≥1024), tablet pequeña (max-lg) y
-// móvil (max-md), para que el plano no se solape en pantallas estrechas.
+// Tamaño y forma de cada mesa en el plano. El tamaño va en unidades de
+// contenedor (cqw = 1% del ancho del plano): así la mesa SIEMPRE ocupa el
+// mismo % que su posición (también en %), y no se solapa en ninguna pantalla
+// —móvil, tablet o escritorio escalan igual. Calibrado para cuadrar con el
+// tamaño clásico a ~1040px de ancho.
 export function clasesMesaPlano(mesa: { capacidad: number; forma: string }): string {
   const tam =
     mesa.forma === "alargada"
       ? mesa.capacidad >= 4
-        ? "w-32 h-16 max-lg:w-26 max-lg:h-13 max-md:w-20 max-md:h-10"
-        : "w-28 h-14 max-lg:w-22 max-lg:h-11 max-md:w-17 max-md:h-9"
+        ? "w-[12cqw] h-[6cqw]"
+        : "w-[10.5cqw] h-[5.3cqw]"
       : mesa.capacidad <= 2
-        ? "w-17 h-17 max-lg:w-14 max-lg:h-14 max-md:w-11 max-md:h-11"
+        ? "w-[6.5cqw] h-[6.5cqw]"
         : mesa.capacidad <= 4
-          ? "w-21 h-21 max-lg:w-17 max-lg:h-17 max-md:w-13 max-md:h-13"
-          : "w-25 h-25 max-lg:w-20 max-lg:h-20 max-md:w-15 max-md:h-15";
-  const forma = mesa.forma === "redonda" ? "rounded-full" : "rounded-2xl max-md:rounded-lg";
+          ? "w-[8cqw] h-[8cqw]"
+          : "w-[9.5cqw] h-[9.5cqw]";
+  const forma = mesa.forma === "redonda" ? "rounded-full" : "rounded-[1.4cqw]";
   return `${tam} ${forma}`;
 }
 
@@ -131,7 +133,7 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
       {vista === "plano" && colocadas.length > 0 ? (
         <>
           <div
-            className="card relative mb-4 aspect-[16/9] w-full overflow-hidden max-md:aspect-[4/3]"
+            className="card relative mb-4 aspect-[16/9] w-full overflow-hidden [container-type:inline-size] max-md:aspect-[4/3]"
             style={{
               backgroundImage: "radial-gradient(circle, #E8E1D4 1.2px, transparent 1.2px)",
               backgroundSize: "26px 26px",
@@ -145,24 +147,24 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
                 title={`${mesa.nombre} · ${mesa.capacidad} plazas`}
                 style={{ left: `${mesa.posX}%`, top: `${mesa.posY}%` }}
                 className={cn(
-                  "absolute flex -translate-x-1/2 -translate-y-1/2 cursor-pointer flex-col items-center justify-center border-2 p-1 text-center transition-all hover:scale-105",
+                  "absolute flex -translate-x-1/2 -translate-y-1/2 cursor-pointer flex-col items-center justify-center overflow-hidden border-2 p-[0.4cqw] text-center leading-tight transition-all hover:scale-105",
                   clasesMesaPlano(mesa),
                   mesa.ticket
                     ? "border-brand bg-brand text-white shadow-(--shadow-lift)"
                     : "border-dashed border-[#C9BFAC] bg-card text-ink hover:border-brand",
                 )}
               >
-                <b className="font-display text-[13px] leading-tight font-bold max-md:text-[9.5px]">{mesa.nombre}</b>
+                <b className="font-display text-[clamp(8px,1.3cqw,13px)] font-bold">{mesa.nombre}</b>
                 {mesa.ticket ? (
                   <>
-                    <span className="font-display text-[13px] font-bold max-md:text-[9.5px]">
+                    <span className="font-display text-[clamp(8px,1.3cqw,13px)] font-bold">
                       {eur(mesa.ticket.total)}
                     </span>
-                    <span className="text-[10px] opacity-80 max-md:hidden">{tiempo(mesa.ticket.minutos)}</span>
+                    <span className="text-[clamp(6px,1cqw,10px)] opacity-80">{tiempo(mesa.ticket.minutos)}</span>
                   </>
                 ) : (
-                  <span className="flex items-center gap-0.5 text-[10.5px] text-ink-soft max-md:text-[8.5px]">
-                    <Users className="size-3 max-md:size-2.5" /> {mesa.capacidad}
+                  <span className="flex items-center gap-0.5 text-[clamp(7px,1.05cqw,10.5px)] text-ink-soft">
+                    <Users className="size-[clamp(7px,1.1cqw,12px)]" /> {mesa.capacidad}
                   </span>
                 )}
               </button>
