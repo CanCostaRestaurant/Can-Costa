@@ -47,6 +47,7 @@ export function DesgloseTabs({
       <div className="mt-3.5 mb-5">
         <Segmentado
           tono="claro"
+          className="w-full"
           opciones={(["resultados", "gastos", "ventas"] as const).map((t) => ({
             etiqueta: <span className="capitalize">{t}</span>,
             onClick: () => setTab(t),

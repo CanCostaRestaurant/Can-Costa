@@ -28,7 +28,10 @@ export function Segmentado({
   return (
     <div
       className={cn(
-        "relative isolate flex",
+        // Grid de columnas iguales AL ANCHO DE LA MÁS LARGA (auto-cols-fr en
+        // contenedor auto): así "A tiempo real" no desborda su celda y la
+        // píldora (que mide 1/n del total) siempre cubre el texto.
+        "relative isolate grid w-fit grid-flow-col auto-cols-fr",
         tono === "claro" ? "rounded-lg bg-chip p-0.5" : "rounded-xl border border-line bg-card p-1",
         className,
       )}
@@ -49,7 +52,7 @@ export function Segmentado({
       />
       {opciones.map((o, i) => {
         const clases = cn(
-          "relative z-10 flex-1 cursor-pointer text-center font-semibold whitespace-nowrap transition-colors duration-300 active:scale-[0.97]",
+          "relative z-10 cursor-pointer text-center font-semibold whitespace-nowrap transition-colors duration-300 active:scale-[0.97]",
           tono === "claro" ? "rounded-md px-3 py-1 text-[12.5px]" : "rounded-lg px-3.5 py-1.5 text-[13px]",
           o.activo
             ? tono === "claro"
