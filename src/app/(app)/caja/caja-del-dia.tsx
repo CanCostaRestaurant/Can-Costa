@@ -414,9 +414,9 @@ function Campo({
   children?: React.ReactNode;
 }) {
   return (
-    <label className="block text-[11px] font-semibold tracking-wider text-ink-soft uppercase">
+    <label className="block min-w-0 text-[11px] font-semibold tracking-wider text-ink-soft uppercase">
       {etiqueta}
-      <span className="mt-1 flex items-center gap-2">
+      <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <input
           type="number"
           step="0.01"
@@ -425,7 +425,7 @@ function Campo({
           placeholder="0,00"
           value={valor}
           onChange={(e) => onCambio(e.target.value)}
-          className="block w-32 rounded-xl border border-line bg-card px-3 py-2.5 font-display text-[16px] font-bold tracking-normal outline-none focus:border-brand"
+          className="block w-28 shrink-0 rounded-xl border border-line bg-card px-3 py-2.5 font-display text-[16px] font-bold tracking-normal outline-none focus:border-brand"
         />
         <span className="font-display text-[14px] font-bold text-ink-soft">€</span>
         {children}
