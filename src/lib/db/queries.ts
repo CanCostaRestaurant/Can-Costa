@@ -1071,31 +1071,59 @@ export async function getPlatosTpv(): Promise<PlatoTpv[]> {
   }
 }
 
-export type DesgloseDia = {
-  fecha: string;
+export type TicketDesglose = {
+  id: string;
+  hora: string;
+  mesa: string;
+  comensales: number | null;
+  metodo: string | null;
+  total: number;
+  numLineas: number;
+};
+export type PlatoDesglose = {
+  nombre: string;
+  emoji: string | null;
+  unidades: number;
+  importe: number;
+  margen: number | null;
+};
+export type ExtraDesglose = { descripcion: string; unidades: number; importe: number };
+
+// Los números de una franja horaria (o del día entero). El filtro
+// Mediodía / Noche / Todo de la pantalla de Ventas alterna entre estos.
+export type NumerosFranja = {
   totalDia: number;
   numTickets: number;
   ticketMedio: number | null;
   comensales: number;
   efectivo: number;
   tarjeta: number;
-  tickets: {
-    id: string;
-    hora: string;
-    mesa: string;
-    comensales: number | null;
-    metodo: string | null;
-    total: number;
-    numLineas: number;
-  }[];
-  platos: { nombre: string; emoji: string | null; unidades: number; importe: number; margen: number | null }[];
-  extras: { descripcion: string; unidades: number; importe: number }[];
+  tickets: TicketDesglose[];
+  platos: PlatoDesglose[];
+  extras: ExtraDesglose[];
+};
+
+export type DesgloseDia = {
+  fecha: string;
   ventaManual: number | null; // ventas_dia cuando no hay tickets (registro a mano)
+  // Números del DÍA COMPLETO también en el nivel superior (compat: Caja lee
+  // desglose.tickets y Fina serializa el objeto entero).
+  totalDia: number;
+  numTickets: number;
+  ticketMedio: number | null;
+  comensales: number;
+  efectivo: number;
+  tarjeta: number;
+  tickets: TicketDesglose[];
+  platos: PlatoDesglose[];
+  extras: ExtraDesglose[];
+  // Mismo desglose partido por franja horaria de cobro (corte a las 17:00
+  // Madrid): mediodía = antes de las 17:00, noche = a partir de las 17:00.
+  franjas: { todo: NumerosFranja; mediodia: NumerosFranja; noche: NumerosFranja };
 };
 
 export async function getDesgloseDia(fecha: string): Promise<DesgloseDia> {
-  const vacio: DesgloseDia = {
-    fecha,
+  const franjaVacia: NumerosFranja = {
     totalDia: 0,
     numTickets: 0,
     ticketMedio: null,
@@ -1105,7 +1133,12 @@ export async function getDesgloseDia(fecha: string): Promise<DesgloseDia> {
     tickets: [],
     platos: [],
     extras: [],
+  };
+  const vacio: DesgloseDia = {
+    fecha,
     ventaManual: null,
+    ...franjaVacia,
+    franjas: { todo: franjaVacia, mediodia: franjaVacia, noche: franjaVacia },
   };
   const db = getDb();
   if (!db) return vacio;
@@ -1135,7 +1168,7 @@ export async function getDesgloseDia(fecha: string): Promise<DesgloseDia> {
         }
 
         const ids = cobrados.map((c) => c.ticket.id);
-        const [lineas, costes] = await Promise.all([
+        const [lineas, costes, pagosDia] = await Promise.all([
           db
             .select({
               ticketId: schema.ticketLineas.ticketId,
@@ -1149,37 +1182,24 @@ export async function getDesgloseDia(fecha: string): Promise<DesgloseDia> {
             .leftJoin(schema.platos, eq(schema.ticketLineas.platoId, schema.platos.id))
             .where(inArray(schema.ticketLineas.ticketId, ids)),
           getPlatosResumen(),
+          db.select().from(schema.ticketPagos).where(inArray(schema.ticketPagos.ticketId, ids)),
         ]);
 
         const costePorPlato = new Map(costes.map((p) => [p.id, p.coste]));
-        const lineasPorTicket = new Map<string, number>();
-        const porPlato = new Map<
-          string,
-          { nombre: string; emoji: string | null; unidades: number; importe: number; margen: number | null }
-        >();
-        const porExtra = new Map<string, { descripcion: string; unidades: number; importe: number }>();
 
+        // Líneas agrupadas por ticket, para poder reagregar por franja.
+        const lineasPorTicketId = new Map<string, typeof lineas>();
         for (const l of lineas) {
-          lineasPorTicket.set(l.ticketId, (lineasPorTicket.get(l.ticketId) ?? 0) + l.cantidad);
-          if (l.platoId) {
-            const acc = porPlato.get(l.platoId) ?? {
-              nombre: l.descripcion,
-              emoji: l.emoji,
-              unidades: 0,
-              importe: 0,
-              margen: null,
-            };
-            acc.unidades += l.cantidad;
-            acc.importe += Number(l.total);
-            const coste = costePorPlato.get(l.platoId);
-            acc.margen = coste !== undefined ? acc.importe - coste * acc.unidades : null;
-            porPlato.set(l.platoId, acc);
-          } else {
-            const clave = l.descripcion;
-            const acc = porExtra.get(clave) ?? { descripcion: clave, unidades: 0, importe: 0 };
-            acc.unidades += l.cantidad;
-            acc.importe += Number(l.total);
-            porExtra.set(clave, acc);
+          const arr = lineasPorTicketId.get(l.ticketId);
+          if (arr) arr.push(l);
+          else lineasPorTicketId.set(l.ticketId, [l]);
+        }
+
+        // Efectivo cobrado por ticket (un ticket puede llevar efectivo + tarjeta).
+        const efectivoPorTicket = new Map<string, number>();
+        for (const p of pagosDia) {
+          if (p.metodo === "efectivo") {
+            efectivoPorTicket.set(p.ticketId, (efectivoPorTicket.get(p.ticketId) ?? 0) + Number(p.importe));
           }
         }
 
@@ -1188,46 +1208,81 @@ export async function getDesgloseDia(fecha: string): Promise<DesgloseDia> {
           minute: "2-digit",
           timeZone: "Europe/Madrid",
         });
+        const horaCorteMadrid = new Intl.DateTimeFormat("es-ES", {
+          hour: "2-digit",
+          hourCycle: "h23",
+          timeZone: "Europe/Madrid",
+        });
+        const CORTE_NOCHE = 17; // cobros < 17:00 = mediodía; ≥ 17:00 = noche
+        const esNoche = (c: (typeof cobrados)[number]) =>
+          parseInt(horaCorteMadrid.format(c.ticket.cobradoAt!), 10) >= CORTE_NOCHE;
 
-        const ticketsDia = cobrados.map((c) => ({
-          id: c.ticket.id,
-          hora: horaMadrid.format(c.ticket.cobradoAt!),
-          mesa: c.mesaNombre ?? "Para llevar",
-          comensales: c.ticket.comensales,
-          metodo: c.ticket.metodoPago,
-          total: c.ticket.total ? Number(c.ticket.total) : 0,
-          numLineas: lineasPorTicket.get(c.ticket.id) ?? 0,
-        }));
+        // Números (KPIs + platos + tickets) de un subconjunto de tickets.
+        const agregar = (subset: typeof cobrados): NumerosFranja => {
+          const tickets: TicketDesglose[] = subset.map((c) => {
+            const ls = lineasPorTicketId.get(c.ticket.id) ?? [];
+            return {
+              id: c.ticket.id,
+              hora: horaMadrid.format(c.ticket.cobradoAt!),
+              mesa: c.mesaNombre ?? "Para llevar",
+              comensales: c.ticket.comensales,
+              metodo: c.ticket.metodoPago,
+              total: c.ticket.total ? Number(c.ticket.total) : 0,
+              numLineas: ls.reduce((a, l) => a + l.cantidad, 0),
+            };
+          });
 
-        const totalDia = ticketsDia.reduce((acc, t) => acc + t.total, 0);
-        // Efectivo/tarjeta desde los PAGOS (un ticket puede llevar de los dos).
-        let efectivo = 0;
-        if (cobrados.length) {
-          const pagosDia = await db
-            .select()
-            .from(schema.ticketPagos)
-            .where(
-              inArray(
-                schema.ticketPagos.ticketId,
-                cobrados.map((c) => c.ticket.id),
-              ),
-            );
-          efectivo = pagosDia.filter((p) => p.metodo === "efectivo").reduce((a, p) => a + Number(p.importe), 0);
-        }
-        const comensales = ticketsDia.reduce((a, t) => a + (t.comensales ?? 0), 0);
+          const porPlato = new Map<string, PlatoDesglose>();
+          const porExtra = new Map<string, ExtraDesglose>();
+          for (const c of subset) {
+            for (const l of lineasPorTicketId.get(c.ticket.id) ?? []) {
+              if (l.platoId) {
+                const acc = porPlato.get(l.platoId) ?? {
+                  nombre: l.descripcion,
+                  emoji: l.emoji,
+                  unidades: 0,
+                  importe: 0,
+                  margen: null,
+                };
+                acc.unidades += l.cantidad;
+                acc.importe += Number(l.total);
+                const coste = costePorPlato.get(l.platoId);
+                acc.margen = coste !== undefined ? acc.importe - coste * acc.unidades : null;
+                porPlato.set(l.platoId, acc);
+              } else {
+                const acc = porExtra.get(l.descripcion) ?? { descripcion: l.descripcion, unidades: 0, importe: 0 };
+                acc.unidades += l.cantidad;
+                acc.importe += Number(l.total);
+                porExtra.set(l.descripcion, acc);
+              }
+            }
+          }
+
+          const totalDia = tickets.reduce((a, t) => a + t.total, 0);
+          const efectivo = subset.reduce((a, c) => a + (efectivoPorTicket.get(c.ticket.id) ?? 0), 0);
+          const comensales = tickets.reduce((a, t) => a + (t.comensales ?? 0), 0);
+          return {
+            totalDia,
+            numTickets: tickets.length,
+            ticketMedio: tickets.length ? totalDia / tickets.length : null,
+            comensales,
+            efectivo,
+            tarjeta: totalDia - efectivo,
+            tickets,
+            platos: [...porPlato.values()].sort((a, b) => b.importe - a.importe),
+            extras: [...porExtra.values()].sort((a, b) => b.importe - a.importe),
+          };
+        };
+
+        const todo = agregar(cobrados);
+        const mediodia = agregar(cobrados.filter((c) => !esNoche(c)));
+        const noche = agregar(cobrados.filter((c) => esNoche(c)));
 
         return {
           fecha,
-          totalDia,
-          numTickets: ticketsDia.length,
-          ticketMedio: ticketsDia.length ? totalDia / ticketsDia.length : null,
-          comensales,
-          efectivo,
-          tarjeta: totalDia - efectivo,
-          tickets: ticketsDia,
-          platos: [...porPlato.values()].sort((a, b) => b.importe - a.importe),
-          extras: [...porExtra.values()].sort((a, b) => b.importe - a.importe),
           ventaManual: null,
+          ...todo,
+          franjas: { todo, mediodia, noche },
         };
       })(),
       12_000,
@@ -1864,6 +1919,9 @@ export type FacturasEmitidas = {
   totalBase: number;
   totalIva: number;
   total: number; // suma de emitidas (las anuladas no cuentan)
+  // Ventas por tickets del período SIN los tickets ya facturados (su venta
+  // viaja en la factura): tickets + facturas = total ventas, sin duplicar.
+  ventasTickets: { tickets: number; base: number; iva: number; total: number; ivaPct: number };
   // Períodos con facturas para el selector: trimestres primero, luego meses.
   trimestres: { valor: string; etiqueta: string }[];
   meses: { valor: string; etiqueta: string }[];
@@ -1888,6 +1946,18 @@ export function rangoPeriodo(periodo: string): { desde: string; hasta: string } 
   };
 }
 
+// Tickets cobrados del período (día en Madrid) SIN factura emitida: la venta
+// de un ticket facturado viaja en su factura — si contara también aquí, el
+// gestor la sumaría dos veces. Si la factura se anula, el ticket vuelve solo.
+export function condTicketsSinFactura(desde: string, hasta: string) {
+  return and(
+    eq(schema.tickets.estado, "cobrado"),
+    sql`(${schema.tickets.cobradoAt} at time zone 'Europe/Madrid')::date >= ${desde}::date`,
+    sql`(${schema.tickets.cobradoAt} at time zone 'Europe/Madrid')::date < ${hasta}::date`,
+    sql`not exists (select 1 from facturas_venta fv where fv.ticket_id = ${schema.tickets.id} and fv.estado = 'emitida')`,
+  );
+}
+
 const ORDINAL_TRIMESTRE = ["1er", "2º", "3er", "4º"];
 
 export function etiquetaPeriodo(periodo: string): string {
@@ -1908,6 +1978,7 @@ export async function getFacturasEmitidas(periodo: string): Promise<FacturasEmit
     totalBase: 0,
     totalIva: 0,
     total: 0,
+    ventasTickets: { tickets: 0, base: 0, iva: 0, total: 0, ivaPct: 10 },
     trimestres: [],
     meses: [],
   };
@@ -1917,7 +1988,7 @@ export async function getFacturasEmitidas(periodo: string): Promise<FacturasEmit
     return await conPlazo(
       (async (): Promise<FacturasEmitidas> => {
         const { desde, hasta } = rangoPeriodo(periodo);
-        const [filas, mesesRaw] = await Promise.all([
+        const [filas, mesesRaw, ajustes, ticketsAgg] = await Promise.all([
           db
             .select()
             .from(schema.facturasVenta)
@@ -1928,6 +1999,14 @@ export async function getFacturasEmitidas(periodo: string): Promise<FacturasEmit
             .from(schema.facturasVenta)
             .groupBy(sql`to_char(${schema.facturasVenta.fecha}, 'YYYY-MM')`)
             .orderBy(sql`to_char(${schema.facturasVenta.fecha}, 'YYYY-MM') desc`),
+          getAjustes(),
+          db
+            .select({
+              tickets: sql<number>`count(*)::int`,
+              total: sql<string>`coalesce(sum(${schema.tickets.total}), 0)`,
+            })
+            .from(schema.tickets)
+            .where(condTicketsSinFactura(desde, hasta)),
         ]);
 
         const rows: FacturaEmitidaFila[] = filas.map((f) => ({
@@ -1947,6 +2026,9 @@ export async function getFacturasEmitidas(periodo: string): Promise<FacturasEmit
         // Trimestres derivados de los meses con facturas (más recientes primero).
         const trimestres = [...new Set(mesesRaw.map((m) => `${m.mes.slice(0, 4)}-T${Math.ceil(Number(m.mes.slice(5, 7)) / 3)}`))];
 
+        const ticketsTotal = Number(ticketsAgg[0]?.total ?? 0);
+        const ticketsBase = Math.round((ticketsTotal / (1 + ajustes.ivaVentasPct / 100)) * 100) / 100;
+
         return {
           periodo,
           etiquetaPeriodo: etiquetaPeriodo(periodo),
@@ -1954,6 +2036,13 @@ export async function getFacturasEmitidas(periodo: string): Promise<FacturasEmit
           totalBase: emitidas.reduce((a, r) => a + r.base, 0),
           totalIva: emitidas.reduce((a, r) => a + r.iva, 0),
           total: emitidas.reduce((a, r) => a + r.total, 0),
+          ventasTickets: {
+            tickets: ticketsAgg[0]?.tickets ?? 0,
+            base: ticketsBase,
+            iva: Math.round((ticketsTotal - ticketsBase) * 100) / 100,
+            total: ticketsTotal,
+            ivaPct: ajustes.ivaVentasPct,
+          },
           trimestres: trimestres.map((t) => ({ valor: t, etiqueta: etiquetaPeriodo(t) })),
           meses: mesesRaw.map((m) => ({ valor: m.mes, etiqueta: etiquetaPeriodo(m.mes) })),
         };
@@ -2498,6 +2587,12 @@ export type GastoPersonal = {
   tipo: "nomina" | "seguridad_social" | "otro";
   trabajadorId: string | null;
   trabajadorNombre: string | null;
+  // Desglose estilo JOMA (opcional; null = no informado).
+  liquido?: number | null;
+  irpf?: number | null;
+  ssTrabajador?: number | null;
+  ssEmpresa?: number | null;
+  cashB?: number | null;
   // El PDF (base64) NO viaja en la lista: solo su presencia y nombre.
   tieneDocumento: boolean;
   documentoNombre: string | null;
@@ -2513,6 +2608,7 @@ export type Trabajador = {
   id: string;
   nombre: string;
   puesto: string | null;
+  categoria?: string | null;
   salario: number | null;
   activo: boolean;
 };
@@ -2531,6 +2627,7 @@ export async function getTrabajadores(): Promise<Trabajador[]> {
           id: f.id,
           nombre: f.nombre,
           puesto: f.puesto,
+          categoria: f.categoria,
           salario: f.salario !== null ? Number(f.salario) : null,
           activo: f.activo,
         }));

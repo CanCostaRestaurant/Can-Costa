@@ -163,6 +163,7 @@ export const personalTrabajadores = pgTable("personal_trabajadores", {
   id: uuid("id").primaryKey().defaultRandom(),
   nombre: text("nombre").notNull(),
   puesto: text("puesto"), // "Cocina", "Sala", "Encargado"…
+  categoria: text("categoria"), // etiqueta libre estilo JOMA: "Sala", "Cocina", "Direccion"…
   salario: numeric("salario", { precision: 12, scale: 2 }), // nómina mensual de referencia (líquido)
   activo: boolean("activo").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -180,6 +181,13 @@ export const personalGastos = pgTable(
     importe: numeric("importe", { precision: 12, scale: 2 }).notNull(),
     trabajadorId: uuid("trabajador_id").references(() => personalTrabajadores.id, { onDelete: "set null" }),
     tipo: personalTipoEnum("tipo").notNull().default("nomina"),
+    // Desglose estilo JOMA (opcional; null = sin desglose, se usa 'importe' como líquido).
+    // coste empresa = liquido + irpf + ssTrabajador + ssEmpresa + cashB (calculado).
+    liquido: numeric("liquido", { precision: 12, scale: 2 }),
+    irpf: numeric("irpf", { precision: 12, scale: 2 }),
+    ssTrabajador: numeric("ss_trabajador", { precision: 12, scale: 2 }),
+    ssEmpresa: numeric("ss_empresa", { precision: 12, scale: 2 }),
+    cashB: numeric("cash_b", { precision: 12, scale: 2 }),
     // PDF de la nómina como data URL (base64). Sin Supabase Storage aún.
     documento: text("documento"),
     documentoNombre: text("documento_nombre"),
