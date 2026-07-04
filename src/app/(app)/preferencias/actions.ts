@@ -9,7 +9,7 @@ type Resultado = { ok: boolean; error?: string };
 
 const MAX_USUARIOS = 7; // como haddock
 
-const ROLES: RolUsuario[] = ["admin", "documentos", "gestor", "chef"];
+const ROLES: RolUsuario[] = ["admin", "documentos", "gestor", "chef", "tpv"];
 
 // El nombre identifica al usuario en el login (junto a su contraseña):
 // no puede repetirse ni chocar con el "Propietario" de la maestra.

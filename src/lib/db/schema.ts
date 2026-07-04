@@ -211,7 +211,7 @@ export const ajustes = pgTable("ajustes", {
 // usuarios  (roles como haddock: admin, documentos, gestor, chef)
 // ---------------------------------------------------------------------
 
-export const usuarioRolEnum = pgEnum("usuario_rol", ["admin", "documentos", "gestor", "chef"]);
+export const usuarioRolEnum = pgEnum("usuario_rol", ["admin", "documentos", "gestor", "chef", "tpv"]);
 
 export const usuarios = pgTable("usuarios", {
   id: uuid("id").primaryKey().defaultRandom(),

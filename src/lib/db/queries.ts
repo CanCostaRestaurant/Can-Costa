@@ -1998,7 +1998,7 @@ export async function getDashboardMes(mes: string, modo: ModoDashboard): Promise
 export type UsuarioFila = {
   id: string;
   nombre: string;
-  rol: "admin" | "documentos" | "gestor" | "chef";
+  rol: "admin" | "documentos" | "gestor" | "chef" | "tpv";
   activo: boolean;
   creado: string;
 };

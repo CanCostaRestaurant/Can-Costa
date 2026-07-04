@@ -6,11 +6,11 @@ const encoder = new TextEncoder();
 
 const DURACION_SESION_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
 
-export type RolUsuario = "admin" | "documentos" | "gestor" | "chef";
+export type RolUsuario = "admin" | "documentos" | "gestor" | "chef" | "tpv";
 
 export type Sesion = { ok: true; nombre: string; rol: RolUsuario } | { ok: false };
 
-const ROLES: RolUsuario[] = ["admin", "documentos", "gestor", "chef"];
+const ROLES: RolUsuario[] = ["admin", "documentos", "gestor", "chef", "tpv"];
 
 function aBase64Url(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);

@@ -23,6 +23,8 @@ const ACCESO: Record<RolUsuario, { permite: string[]; inicio: string } | null> =
     inicio: "/dashboard",
   },
   chef: { permite: ["/escandallos", "/productos"], inicio: "/escandallos" },
+  // Modo tablet: solo cobrar (TPV) y el día (Ventas, con el cierre de caja).
+  tpv: { permite: ["/tpv", "/ventas"], inicio: "/tpv" },
 };
 
 function puedeVer(rol: RolUsuario, pathname: string): boolean {

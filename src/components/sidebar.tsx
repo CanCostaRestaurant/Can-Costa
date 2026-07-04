@@ -31,6 +31,7 @@ const ETIQUETA_ROL: Record<RolUsuario, string> = {
   documentos: "Documentos",
   gestor: "Gestor",
   chef: "Chef",
+  tpv: "Tablet TPV",
 };
 
 // Qué ve cada rol en el menú (el proxy además bloquea la ruta).
@@ -38,6 +39,7 @@ function visiblePara(rol: RolUsuario, href: string): boolean {
   if (rol === "admin") return true;
   if (rol === "documentos") return href === "/documentos";
   if (rol === "chef") return href === "/escandallos" || href === "/productos";
+  if (rol === "tpv") return href === "/tpv" || href === "/ventas"; // (usa BarraTablet, esto es red de seguridad)
   // gestor: consulta de negocio y gastos, sin TPV/reservas/clientes
   return !["/tpv", "/reservas", "/clientes"].includes(href);
 }

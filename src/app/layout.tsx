@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -17,6 +17,25 @@ const sans = Instrument_Sans({
 export const metadata: Metadata = {
   title: "Can Costa · Food cost y compras",
   description: "Gestión de compras, precios y escandallos de Can Costa",
+  // Instalable en la tablet como app (iPad usa estas etiquetas, no el manifest).
+  appleWebApp: {
+    capable: true,
+    title: "Can Costa TPV",
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#F7F3EC",
+  width: "device-width",
+  initialScale: 1,
+  // En la tablet de sala no queremos zoom accidental con los dedos al cobrar.
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
-import { COOKIE_SESION, crearToken, hashContrasena } from "@/lib/auth";
+import { COOKIE_SESION, crearToken, hashContrasena, type RolUsuario } from "@/lib/auth";
 import { conPlazo, getDb, schema } from "@/lib/db";
 
 // Login con usuario + contraseña: se busca el usuario por nombre (sin
@@ -30,7 +30,7 @@ export async function iniciarSesion(
     return { error: "El login no está configurado en el servidor (AUTH_PASSWORD / AUTH_SECRET)" };
   }
 
-  let usuario: { nombre: string; rol: "admin" | "documentos" | "gestor" | "chef" } | null = null;
+  let usuario: { nombre: string; rol: RolUsuario } | null = null;
 
   // 1) Usuario de la tabla: nombre + su contraseña.
   const db = getDb();
@@ -69,7 +69,16 @@ export async function iniciarSesion(
     maxAge: 30 * 24 * 60 * 60,
     path: "/",
   });
-  redirect("/");
+
+  // Cada rol aterriza en su pantalla (la tablet, directa al TPV a cobrar).
+  const INICIO: Record<typeof usuario.rol, string> = {
+    admin: "/",
+    gestor: "/dashboard",
+    documentos: "/documentos",
+    chef: "/escandallos",
+    tpv: "/tpv",
+  };
+  redirect(INICIO[usuario.rol]);
 }
 
 export async function cerrarSesion(): Promise<void> {

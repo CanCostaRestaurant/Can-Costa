@@ -14,6 +14,7 @@ const ROLES: { valor: RolUsuario; etiqueta: string; descripcion: string }[] = [
   { valor: "documentos", etiqueta: "Documentos", descripcion: "solo añade, ve y edita documentos (quien recepciona)" },
   { valor: "gestor", etiqueta: "Gestor", descripcion: "consulta y descarga (gestoría): sin TPV, reservas ni clientes" },
   { valor: "chef", etiqueta: "Chef", descripcion: "solo escandallos y productos" },
+  { valor: "tpv", etiqueta: "Tablet TPV", descripcion: "modo tablet de sala: solo TPV y Ventas, entra directo a cobrar" },
 ];
 
 export function PreferenciasClient({ ajustes, usuarios }: { ajustes: Ajustes; usuarios: UsuarioFila[] }) {

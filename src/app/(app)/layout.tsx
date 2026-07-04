@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { COOKIE_SESION, verificarSesion, type RolUsuario } from "@/lib/auth";
+import { BarraTablet } from "@/components/barra-tablet";
 import { FinaWidget } from "@/components/fina-widget";
 import { Sidebar } from "@/components/sidebar";
 
@@ -14,6 +15,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       nombre = sesion.nombre;
       rol = sesion.rol;
     }
+  }
+
+  // Modo TABLET (rol tpv): sin sidebar — barra superior mínima y todo el
+  // ancho para cobrar. Pensado para instalarse como app en la tablet.
+  if (rol === "tpv") {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <BarraTablet nombre={nombre} />
+        <main className="flex-1 px-6 pt-5 pb-10 max-md:px-4">{children}</main>
+      </div>
+    );
   }
 
   return (
