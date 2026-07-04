@@ -15,18 +15,19 @@ function tiempo(minutos: number): string {
 }
 
 // Tamaño y forma de cada mesa en el plano (según capacidad y forma real).
-// En pantallas pequeñas (móvil) las mesas encogen para no solaparse.
+// Tres tamaños: escritorio/tablet grande (≥1024), tablet pequeña (max-lg) y
+// móvil (max-md), para que el plano no se solape en pantallas estrechas.
 export function clasesMesaPlano(mesa: { capacidad: number; forma: string }): string {
   const tam =
     mesa.forma === "alargada"
       ? mesa.capacidad >= 4
-        ? "w-32 h-16 max-md:w-20 max-md:h-10"
-        : "w-28 h-14 max-md:w-17 max-md:h-9"
+        ? "w-32 h-16 max-lg:w-26 max-lg:h-13 max-md:w-20 max-md:h-10"
+        : "w-28 h-14 max-lg:w-22 max-lg:h-11 max-md:w-17 max-md:h-9"
       : mesa.capacidad <= 2
-        ? "w-17 h-17 max-md:w-11 max-md:h-11"
+        ? "w-17 h-17 max-lg:w-14 max-lg:h-14 max-md:w-11 max-md:h-11"
         : mesa.capacidad <= 4
-          ? "w-21 h-21 max-md:w-13 max-md:h-13"
-          : "w-25 h-25 max-md:w-15 max-md:h-15";
+          ? "w-21 h-21 max-lg:w-17 max-lg:h-17 max-md:w-13 max-md:h-13"
+          : "w-25 h-25 max-lg:w-20 max-lg:h-20 max-md:w-15 max-md:h-15";
   const forma = mesa.forma === "redonda" ? "rounded-full" : "rounded-2xl max-md:rounded-lg";
   return `${tam} ${forma}`;
 }
