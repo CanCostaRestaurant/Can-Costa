@@ -18,6 +18,7 @@ import {
   TriangleAlert,
   Truck,
   Users,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -39,7 +40,7 @@ function visiblePara(rol: RolUsuario, href: string): boolean {
   if (rol === "admin") return true;
   if (rol === "documentos") return href === "/documentos";
   if (rol === "chef") return href === "/escandallos" || href === "/productos";
-  if (rol === "tpv") return href === "/tpv" || href === "/ventas"; // (usa BarraTablet, esto es red de seguridad)
+  if (rol === "tpv") return href === "/tpv" || href === "/ventas" || href === "/caja"; // (usa BarraTablet, esto es red de seguridad)
   // gestor: consulta de negocio y gastos, sin TPV/reservas/clientes
   return !["/tpv", "/reservas", "/clientes"].includes(href);
 }
@@ -60,6 +61,7 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
     items: [
       { href: "/tpv", label: "TPV", icon: Tablet },
       { href: "/ventas", label: "Ventas", icon: Coins },
+      { href: "/caja", label: "Caja", icon: Wallet },
       { href: "/reservas", label: "Reservas", icon: CalendarDays },
       { href: "/clientes", label: "Clientes", icon: BookUser, chip: "nuevo" },
     ],

@@ -108,7 +108,7 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
               <Settings2 className="size-4 text-ink-soft" /> Distribución
             </Link>
             <Link
-              href="/ventas"
+              href="/caja"
               className="flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[13.5px] font-semibold text-white transition-colors hover:bg-black"
             >
               <Lock className="size-4" /> Cierre de caja

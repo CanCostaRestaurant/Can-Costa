@@ -19,12 +19,12 @@ const ACCESO: Record<RolUsuario, { permite: string[]; inicio: string } | null> =
   admin: null,
   documentos: { permite: ["/documentos"], inicio: "/documentos" },
   gestor: {
-    permite: ["/", "/dashboard", "/ventas", "/documentos", "/productos", "/proveedores", "/incidencias", "/conciliacion", "/personal"],
+    permite: ["/", "/dashboard", "/ventas", "/caja", "/documentos", "/productos", "/proveedores", "/incidencias", "/conciliacion", "/personal"],
     inicio: "/dashboard",
   },
   chef: { permite: ["/escandallos", "/productos"], inicio: "/escandallos" },
-  // Modo tablet: solo cobrar (TPV) y el día (Ventas, con el cierre de caja).
-  tpv: { permite: ["/tpv", "/ventas"], inicio: "/tpv" },
+  // Modo tablet: cobrar (TPV), el día (Ventas) y cerrar la caja (Caja).
+  tpv: { permite: ["/tpv", "/ventas", "/caja"], inicio: "/tpv" },
 };
 
 function puedeVer(rol: RolUsuario, pathname: string): boolean {

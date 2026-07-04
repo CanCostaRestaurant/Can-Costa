@@ -6,29 +6,23 @@ import { useRouter } from "next/navigation";
 import { Banknote, CreditCard, Printer, Tablet, Users } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
 import { DatePicker } from "@/components/date-picker";
-import { type CierreDia, type CierreHistorico, type DesgloseDia, type VentaDia } from "@/lib/db/queries";
+import { type DesgloseDia, type VentaDia } from "@/lib/db/queries";
 import { cn, eur, pct } from "@/lib/utils";
 import { guardarVentaDia } from "./actions";
-import { CajaDelDia } from "./caja-del-dia";
 
 export function VentasClient({
   desglose,
   historico,
-  caja,
-  cajas,
   hoy,
 }: {
   desglose: DesgloseDia;
   historico: VentaDia[];
-  caja: CierreDia;
-  cajas: CierreHistorico[];
   hoy: string;
 }) {
   const router = useRouter();
   const [guardando, startGuardar] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [importe, setImporte] = useState("");
-  const [tabHist, setTabHist] = useState<"ventas" | "cajas">("ventas");
 
   const d = desglose;
   const hayTickets = d.numTickets > 0;
@@ -209,137 +203,41 @@ export function VentasClient({
         </div>
       )}
 
-      {/* Caja del día: retiradas + cierre (antes en /tpv/cierre) */}
-      {(hayTickets || caja.cierre !== null || caja.retiradas.length > 0) && (
-        <div className="mb-3.5">
-          <h3 className="mb-3 flex items-center gap-2 font-display text-[17px] font-bold tracking-tight">
-            Caja del día
-            {caja.cierre !== null && <Chip tone="good" dot>cerrada</Chip>}
-          </h3>
-          <CajaDelDia datos={caja} />
-        </div>
-      )}
-
-      {/* Histórico: ventas o cajas */}
+      {/* Histórico de ventas */}
       <div className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
-          <div className="flex gap-1">
-            {(["ventas", "cajas"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTabHist(t)}
+        <div className="border-b border-line px-4 py-3 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
+          Histórico · últimos 35 días
+        </div>
+        <table className="w-full border-collapse">
+          <tbody>
+            {historico.map((v) => (
+              <tr
+                key={v.id}
+                onClick={() => cambiarDia(v.fecha)}
                 className={cn(
-                  "cursor-pointer rounded-full px-3 py-1 text-[12.5px] font-semibold transition-colors",
-                  tabHist === t ? "bg-ink text-white" : "text-ink-soft hover:bg-chip",
+                  "cursor-pointer border-b border-line transition-colors last:border-none hover:bg-hover",
+                  v.fecha === d.fecha && "bg-hover",
                 )}
               >
-                {t === "ventas" ? "Ventas" : "Cajas"}
-              </button>
+                <td className="px-4 py-2.5 text-sm font-semibold capitalize">{v.diaSemana}</td>
+                <td className="px-4 py-2.5 text-sm text-ink-soft">{v.fechaLegible}</td>
+                <td className="px-4 py-2.5">
+                  <Chip tone={v.origen === "tpv" ? "good" : "gray"}>
+                    {v.origen === "tpv" ? "TPV" : v.origen === "seed" ? "demo" : "manual"}
+                  </Chip>
+                </td>
+                <td className="px-4 py-2.5 text-right font-display text-[14.5px] font-semibold">{eur(v.total)}</td>
+              </tr>
             ))}
-          </div>
-          <span className="text-[11.5px] tracking-wider text-ink-soft uppercase">últimos 35 días</span>
-        </div>
-
-        {tabHist === "ventas" ? (
-          <table className="w-full border-collapse">
-            <tbody>
-              {historico.map((v) => (
-                <tr
-                  key={v.id}
-                  onClick={() => cambiarDia(v.fecha)}
-                  className={cn(
-                    "cursor-pointer border-b border-line transition-colors last:border-none hover:bg-hover",
-                    v.fecha === d.fecha && "bg-hover",
-                  )}
-                >
-                  <td className="px-4 py-2.5 text-sm font-semibold capitalize">{v.diaSemana}</td>
-                  <td className="px-4 py-2.5 text-sm text-ink-soft">{v.fechaLegible}</td>
-                  <td className="px-4 py-2.5">
-                    <Chip tone={v.origen === "tpv" ? "good" : "gray"}>
-                      {v.origen === "tpv" ? "TPV" : v.origen === "seed" ? "demo" : "manual"}
-                    </Chip>
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-display text-[14.5px] font-semibold">{eur(v.total)}</td>
-                </tr>
-              ))}
-              {historico.length === 0 && (
-                <tr>
-                  <td className="px-4 py-8 text-center text-sm text-ink-soft">Aún no hay ventas registradas.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <ThHist>Día</ThHist>
-                  <ThHist>Efectivo</ThHist>
-                  <ThHist>Datáfono</ThHist>
-                  <ThHist>Retiradas</ThHist>
-                  <ThHist>Fondo</ThHist>
-                  <ThHist>Cerró</ThHist>
-                </tr>
-              </thead>
-              <tbody>
-                {cajas.map((h) => (
-                  <tr
-                    key={h.fecha}
-                    onClick={() => cambiarDia(h.fecha)}
-                    className={cn(
-                      "cursor-pointer border-b border-line transition-colors last:border-none hover:bg-hover",
-                      h.fecha === d.fecha && "bg-hover",
-                    )}
-                  >
-                    <td className="px-4 py-2.5 text-sm font-semibold whitespace-nowrap">{h.fechaLegible}</td>
-                    <td className="px-4 py-2.5"><CeldaCuadre contado={h.efectivoContado} dif={h.difEfectivo} /></td>
-                    <td className="px-4 py-2.5"><CeldaCuadre contado={h.datafono} dif={h.difTarjeta} /></td>
-                    <td className="px-4 py-2.5 text-sm text-ink-soft whitespace-nowrap">
-                      {h.retiradas > 0 ? `−${eur(h.retiradas, false)}` : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 font-display text-sm font-bold whitespace-nowrap">{eur(h.fondoSiguiente)}</td>
-                    <td className="px-4 py-2.5 text-sm text-ink-soft">{h.cerradoPor ?? "—"}</td>
-                  </tr>
-                ))}
-                {cajas.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-ink-soft">
-                      Aún no has cerrado ninguna caja.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+            {historico.length === 0 && (
+              <tr>
+                <td className="px-4 py-8 text-center text-sm text-ink-soft">Aún no hay ventas registradas.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </section>
-  );
-}
-
-function ThHist({ children }: { children: React.ReactNode }) {
-  return (
-    <th className="border-b border-line px-4 py-2 text-left text-[11px] font-semibold tracking-wider text-ink-soft uppercase">
-      {children}
-    </th>
-  );
-}
-
-function CeldaCuadre({ contado, dif }: { contado: number; dif: number }) {
-  const cuadra = Math.abs(dif) < 0.005;
-  return (
-    <span className="flex items-center gap-2 whitespace-nowrap">
-      <b className="font-display text-sm font-bold">{eur(contado)}</b>
-      {cuadra ? (
-        <Chip tone="good">✓</Chip>
-      ) : (
-        <Chip tone={Math.abs(dif) > 5 ? "bad" : "warn"}>
-          {dif > 0 ? "+" : "−"}
-          {eur(Math.abs(dif), false)}
-        </Chip>
-      )}
-    </span>
   );
 }
 
