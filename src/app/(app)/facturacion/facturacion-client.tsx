@@ -6,10 +6,17 @@
 import { useRouter } from "next/navigation";
 import { FileText } from "lucide-react";
 import { PageHead, Chip } from "@/components/ui";
+import { SeccionesDocumentos } from "@/components/secciones-documentos";
 import { type FacturasEmitidas } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
 
-export function FacturacionClient({ datos }: { datos: FacturasEmitidas }) {
+export function FacturacionClient({
+  datos,
+  puedeRecibidas,
+}: {
+  datos: FacturasEmitidas;
+  puedeRecibidas: boolean;
+}) {
   const router = useRouter();
 
   // El mes elegido puede no estar entre los que tienen facturas (mes vacío):
@@ -20,6 +27,7 @@ export function FacturacionClient({ datos }: { datos: FacturasEmitidas }) {
 
   return (
     <section className="anim-in">
+      <SeccionesDocumentos activa="emitidas" mostrarRecibidas={puedeRecibidas} />
       <PageHead
         titulo="Facturación"
         subtitulo="Facturas emitidas a clientes que las pidieron — para la declaración"

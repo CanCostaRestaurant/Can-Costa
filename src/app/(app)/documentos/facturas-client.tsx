@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Camera, FileText, Inbox, Mail, SlidersHorizontal, X } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
 import { MonthPicker } from "@/components/date-picker";
+import { SeccionesDocumentos } from "@/components/secciones-documentos";
 import {
   ETIQUETA_CATEGORIA,
   type CategoriaGasto,
@@ -39,9 +40,11 @@ const TIPOS: { valor: TipoDocumento; etiqueta: string }[] = [
 export function FacturasClient({
   facturas,
   productos,
+  puedeEmitidas,
 }: {
   facturas: Factura[];
   productos: ProductoOpcion[];
+  puedeEmitidas: boolean;
 }) {
   const router = useRouter();
   const [filtro, setFiltro] = useState<FiltroEstado>("todas");
@@ -175,6 +178,7 @@ export function FacturasClient({
 
   return (
     <section className="anim-in">
+      <SeccionesDocumentos activa="recibidas" mostrarEmitidas={puedeEmitidas} />
       <PageHead
         titulo="Facturas y albaranes"
         subtitulo="Revisa la bandeja y valida: los precios se actualizan solos"

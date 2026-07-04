@@ -9,7 +9,6 @@ import {
   ChartColumn,
   ChefHat,
   Coins,
-  FileText,
   Home,
   LogOut,
   ReceiptText,
@@ -63,7 +62,6 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
       { href: "/tpv", label: "TPV", icon: Tablet },
       { href: "/ventas", label: "Ventas", icon: Coins },
       { href: "/caja", label: "Caja", icon: Wallet },
-      { href: "/facturacion", label: "Facturación", icon: FileText, chip: "nuevo" },
       { href: "/reservas", label: "Reservas", icon: CalendarDays },
       { href: "/clientes", label: "Clientes", icon: BookUser, chip: "nuevo" },
     ],
@@ -111,7 +109,12 @@ export function Sidebar({ nombre, rol }: { nombre: string; rol: RolUsuario }) {
           </div>
           <div className="flex flex-col gap-0.5">
             {grupo.items.map(({ href, label, icon: Icon, chip }) => {
-              const activo = href === "/" ? pathname === "/" : pathname.startsWith(href);
+              const activo =
+                href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(href) ||
+                    // Facturación (Emitidas) es ahora una pestaña de Documentos.
+                    (href === "/documentos" && pathname.startsWith("/facturacion"));
               return (
                 <Link
                   key={href}
