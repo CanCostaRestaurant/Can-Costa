@@ -6,11 +6,19 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Banknote, Check, CreditCard, Lock, Minus, Plus, TriangleAlert, X } from "lucide-react";
+import { Banknote, Calculator, CreditCard, Lock, Minus, Plus, TriangleAlert, X } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { type CierreDia } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
 import { cerrarCaja, crearRetirada, eliminarRetirada } from "../tpv/cierre/actions";
+
+// Denominaciones de euro en céntimos (evita líos de coma flotante al sumar).
+const BILLETES = [50000, 20000, 10000, 5000, 2000, 1000, 500] as const;
+const MONEDAS = [200, 100, 50, 20, 10, 5, 2, 1] as const;
+
+function etiquetaDenom(c: number): string {
+  return c >= 100 ? `${c / 100} €` : `${c} c`;
+}
 
 export function CajaDelDia({ datos }: { datos: CierreDia }) {
   const router = useRouter();
@@ -27,6 +35,17 @@ export function CajaDelDia({ datos }: { datos: CierreDia }) {
   // Retiradas
   const [retImporte, setRetImporte] = useState("");
   const [retMotivo, setRetMotivo] = useState("");
+
+  // Contador de billetes y monedas (rellena el efectivo contado)
+  const [contadorAbierto, setContadorAbierto] = useState(false);
+  const [conteo, setConteo] = useState<Record<number, number>>({});
+
+  function setDenom(c: number, cantidad: number) {
+    const n = { ...conteo, [c]: Math.max(0, Math.floor(cantidad) || 0) };
+    setConteo(n);
+    const totalCent = [...BILLETES, ...MONEDAS].reduce((acc, d) => acc + d * (n[d] || 0), 0);
+    setContadoTxt((totalCent / 100).toFixed(2));
+  }
 
   const contado = parseFloat(contadoTxt.replace(",", ".")) || 0;
   const datafono = parseFloat(datafonoTxt.replace(",", ".")) || 0;
@@ -126,7 +145,18 @@ export function CajaDelDia({ datos }: { datos: CierreDia }) {
           <>
             <div className="grid grid-cols-2 gap-3.5 max-md:grid-cols-1">
               <Campo etiqueta="Efectivo contado en el cajón" detalle="todo lo que hay, incluido el fondo" valor={contadoTxt} onCambio={setContadoTxt}>
-                {contadoTxt !== "" && <Diferencia dif={difEfectivo} cuadra={cuadraEfectivo} />}
+                <button
+                  type="button"
+                  onClick={() => setContadorAbierto((v) => !v)}
+                  title="Contar billetes y monedas"
+                  className={cn(
+                    "inline-flex cursor-pointer items-center gap-1 rounded-lg border px-2 py-1.5 text-[12px] font-semibold transition-colors",
+                    contadorAbierto ? "border-brand bg-brand-soft text-brand" : "border-line text-ink-soft hover:border-brand hover:text-ink",
+                  )}
+                >
+                  <Calculator className="size-3.5" /> Contar
+                </button>
+                {contadoTxt !== "" && !contadorAbierto && <Diferencia dif={difEfectivo} cuadra={cuadraEfectivo} />}
               </Campo>
               <Campo etiqueta="Total del cierre del datáfono" detalle="haz el cierre y copia el total" valor={datafonoTxt} onCambio={setDatafonoTxt}>
                 {datafonoTxt !== "" && <Diferencia dif={difTarjeta} cuadra={cuadraTarjeta} />}
@@ -142,6 +172,20 @@ export function CajaDelDia({ datos }: { datos: CierreDia }) {
                 />
               </label>
             </div>
+
+            {contadorAbierto && (
+              <ContadorEfectivo
+                conteo={conteo}
+                onDenom={setDenom}
+                total={contado}
+                dif={difEfectivo}
+                cuadra={cuadraEfectivo}
+                onVaciar={() => {
+                  setConteo({});
+                  setContadoTxt("");
+                }}
+              />
+            )}
 
             {contadoTxt !== "" && datafonoTxt !== "" && (
               <div className={cn("mt-3.5 rounded-xl px-4 py-2.5 text-[13px] font-semibold", cuadraEfectivo && cuadraTarjeta ? "bg-good-soft text-good" : "bg-warn-soft text-[#7A5106]")}>
@@ -248,6 +292,100 @@ export function CajaDelDia({ datos }: { datos: CierreDia }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ContadorEfectivo({
+  conteo,
+  onDenom,
+  total,
+  dif,
+  cuadra,
+  onVaciar,
+}: {
+  conteo: Record<number, number>;
+  onDenom: (c: number, cantidad: number) => void;
+  total: number;
+  dif: number;
+  cuadra: boolean;
+  onVaciar: () => void;
+}) {
+  return (
+    <div className="mt-3.5 rounded-2xl border border-line bg-hover/40 p-4">
+      <div className="mb-2.5 flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-[12px] font-semibold tracking-wider text-ink-soft uppercase">
+          <Calculator className="size-3.5" /> Recuento de billetes y monedas
+        </span>
+        <button
+          type="button"
+          onClick={onVaciar}
+          className="cursor-pointer text-[11.5px] font-semibold text-ink-soft underline-offset-2 hover:text-bad hover:underline"
+        >
+          Vaciar
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-5 gap-y-1 max-sm:grid-cols-1">
+        <div>
+          <div className="mb-1 text-[10.5px] font-semibold tracking-wider text-ink-soft uppercase">Billetes</div>
+          {BILLETES.map((c) => (
+            <FilaDenom key={c} c={c} cantidad={conteo[c] || 0} onDenom={onDenom} />
+          ))}
+        </div>
+        <div>
+          <div className="mb-1 text-[10.5px] font-semibold tracking-wider text-ink-soft uppercase">Monedas</div>
+          {MONEDAS.map((c) => (
+            <FilaDenom key={c} c={c} cantidad={conteo[c] || 0} onDenom={onDenom} />
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
+        <span className="text-[13px] font-semibold text-ink-soft">Total contado</span>
+        <span className="flex items-center gap-2">
+          <b className="font-display text-[18px] font-bold">{eur(total)}</b>
+          {total > 0 && (cuadra ? <Chip tone="good">cuadra ✓</Chip> : <Chip tone={Math.abs(dif) > 5 ? "bad" : "warn"}>{dif > 0 ? "sobran" : "faltan"} {eur(Math.abs(dif))}</Chip>)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function FilaDenom({ c, cantidad, onDenom }: { c: number; cantidad: number; onDenom: (c: number, cantidad: number) => void }) {
+  const subtotal = (c * cantidad) / 100;
+  return (
+    <div className="flex items-center gap-2 py-0.5">
+      <span className="w-12 shrink-0 text-[13px] font-semibold">{etiquetaDenom(c)}</span>
+      <button
+        type="button"
+        onClick={() => onDenom(c, cantidad - 1)}
+        disabled={cantidad <= 0}
+        className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border border-line text-ink-soft hover:bg-chip disabled:opacity-30"
+        aria-label={`Quitar ${etiquetaDenom(c)}`}
+      >
+        <Minus className="size-3" />
+      </button>
+      <input
+        type="number"
+        min="0"
+        inputMode="numeric"
+        value={cantidad === 0 ? "" : cantidad}
+        onChange={(e) => onDenom(c, parseInt(e.target.value, 10) || 0)}
+        placeholder="0"
+        className="w-12 rounded-md border border-line bg-card px-1 py-1 text-center text-[13px] font-semibold outline-none focus:border-brand"
+      />
+      <button
+        type="button"
+        onClick={() => onDenom(c, cantidad + 1)}
+        className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-md border border-line text-ink-soft hover:bg-chip"
+        aria-label={`Añadir ${etiquetaDenom(c)}`}
+      >
+        <Plus className="size-3" />
+      </button>
+      <span className={cn("ml-auto w-16 text-right font-display text-[12.5px] font-bold", subtotal === 0 && "text-ink-soft/40")}>
+        {eur(subtotal)}
+      </span>
     </div>
   );
 }
