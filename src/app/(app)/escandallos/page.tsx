@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
-import { getPlatosResumen } from "@/lib/db/queries";
+import { getPlatosResumen, type PlatoResumen } from "@/lib/db/queries";
 import { eur, pct } from "@/lib/utils";
 import { NuevoPlatoBtn } from "./nuevo-plato-btn";
 
@@ -25,7 +25,8 @@ function tonoFoodCost(fc: number | null): "good" | "warn" | "bad" | "gray" {
 
 export default async function EscandallosPage() {
   const todos = await getPlatosResumen();
-  const platos = todos.filter((p) => !p.esPreparacion);
+  const platos = todos.filter((p) => !p.esPreparacion && p.tipoPlato !== "bebida");
+  const bebidas = todos.filter((p) => !p.esPreparacion && p.tipoPlato === "bebida");
   const preparaciones = todos.filter((p) => p.esPreparacion);
   const conAviso = todos.filter((p) => p.aviso);
 
@@ -33,7 +34,7 @@ export default async function EscandallosPage() {
     <section className="anim-in">
       <PageHead
         titulo="Escandallos"
-        subtitulo="El coste de cada plato, siempre al día con tus últimos precios"
+        subtitulo="El coste de cada plato y bebida, siempre al día con tus últimos precios"
         derecha={<NuevoPlatoBtn />}
       />
 
@@ -55,61 +56,13 @@ export default async function EscandallosPage() {
         </div>
       )}
 
+      {/* Platos: solo etiquetamos cuando hay bebidas, para no ensuciar */}
+      {bebidas.length > 0 && (
+        <h3 className="mb-3 font-display text-[17px] font-bold tracking-tight">Platos</h3>
+      )}
       <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-2 max-sm:grid-cols-1">
         {platos.map((plato, i) => (
-          <Link
-            key={plato.id}
-            href={`/escandallos/${plato.id}`}
-            className="card anim-in overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-(--shadow-lift)"
-            style={{ animationDelay: `${i * 40}ms` }}
-          >
-            <div
-              className="relative flex h-[92px] items-end px-4 py-3"
-              style={plato.fotoUrl ? undefined : { background: GRADIENTES[i % GRADIENTES.length] }}
-            >
-              {plato.fotoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={plato.fotoUrl} alt="" className="absolute inset-0 size-full object-cover" />
-              ) : (
-                <span className="text-[34px]">{plato.emoji}</span>
-              )}
-              {plato.aviso && (
-                <Chip tone="bad" className="absolute top-2.5 right-2.5">
-                  {plato.aviso}
-                </Chip>
-              )}
-            </div>
-            <div className="px-4 pt-3.5 pb-4">
-              <h4 className="font-display text-base font-bold tracking-tight">{plato.nombre}</h4>
-              <div className="mt-2.5 flex items-end gap-4">
-                <div>
-                  <small className="block text-[11px] font-semibold tracking-wide text-ink-soft uppercase">
-                    Coste
-                  </small>
-                  <b className="font-display text-[15.5px] font-bold">{eur(plato.coste)}</b>
-                </div>
-                <div>
-                  <small className="block text-[11px] font-semibold tracking-wide text-ink-soft uppercase">
-                    PVP
-                  </small>
-                  <b className="font-display text-[15.5px] font-bold">
-                    {plato.pvp !== null ? eur(plato.pvp) : "—"}
-                  </b>
-                </div>
-                <Chip tone={tonoFoodCost(plato.foodCost)} className="ml-auto">
-                  {plato.foodCost !== null ? `${pct(plato.foodCost, 0)} food cost` : "sin PVP"}
-                </Chip>
-              </div>
-              {plato.margenObjetivo !== null && plato.margen !== null && (
-                <div
-                  className={`mt-2 text-[12px] font-semibold ${plato.bajoObjetivo ? "text-bad" : "text-good"}`}
-                >
-                  margen {pct(plato.margen, 0)} · esperado {pct(plato.margenObjetivo, 0)}
-                  {plato.bajoObjetivo ? " ⚠" : " ✓"}
-                </div>
-              )}
-            </div>
-          </Link>
+          <TarjetaPlato key={plato.id} plato={plato} i={i} />
         ))}
         {platos.length === 0 && (
           <div className="card col-span-full p-8 text-center text-sm text-ink-soft">
@@ -117,6 +70,22 @@ export default async function EscandallosPage() {
           </div>
         )}
       </div>
+
+      {bebidas.length > 0 && (
+        <>
+          <h3 className="mt-7 mb-3 font-display text-[17px] font-bold tracking-tight">
+            Bebidas
+            <span className="ml-2 font-body text-[12.5px] font-normal text-ink-soft">
+              coste de compra vs precio de venta
+            </span>
+          </h3>
+          <div className="grid grid-cols-3 gap-3.5 max-md:grid-cols-2 max-sm:grid-cols-1">
+            {bebidas.map((bebida, i) => (
+              <TarjetaPlato key={bebida.id} plato={bebida} i={i} />
+            ))}
+          </div>
+        </>
+      )}
 
       {preparaciones.length > 0 && (
         <>
@@ -151,5 +120,54 @@ export default async function EscandallosPage() {
         </>
       )}
     </section>
+  );
+}
+
+function TarjetaPlato({ plato, i }: { plato: PlatoResumen; i: number }) {
+  return (
+    <Link
+      href={`/escandallos/${plato.id}`}
+      className="card anim-in overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-(--shadow-lift)"
+      style={{ animationDelay: `${i * 40}ms` }}
+    >
+      <div
+        className="relative flex h-[92px] items-end px-4 py-3"
+        style={plato.fotoUrl ? undefined : { background: GRADIENTES[i % GRADIENTES.length] }}
+      >
+        {plato.fotoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={plato.fotoUrl} alt="" className="absolute inset-0 size-full object-cover" />
+        ) : (
+          <span className="text-[34px]">{plato.emoji}</span>
+        )}
+        {plato.aviso && (
+          <Chip tone="bad" className="absolute top-2.5 right-2.5">
+            {plato.aviso}
+          </Chip>
+        )}
+      </div>
+      <div className="px-4 pt-3.5 pb-4">
+        <h4 className="font-display text-base font-bold tracking-tight">{plato.nombre}</h4>
+        <div className="mt-2.5 flex items-end gap-4">
+          <div>
+            <small className="block text-[11px] font-semibold tracking-wide text-ink-soft uppercase">Coste</small>
+            <b className="font-display text-[15.5px] font-bold">{eur(plato.coste)}</b>
+          </div>
+          <div>
+            <small className="block text-[11px] font-semibold tracking-wide text-ink-soft uppercase">PVP</small>
+            <b className="font-display text-[15.5px] font-bold">{plato.pvp !== null ? eur(plato.pvp) : "—"}</b>
+          </div>
+          <Chip tone={tonoFoodCost(plato.foodCost)} className="ml-auto">
+            {plato.foodCost !== null ? `${pct(plato.foodCost, 0)} food cost` : "sin PVP"}
+          </Chip>
+        </div>
+        {plato.margenObjetivo !== null && plato.margen !== null && (
+          <div className={`mt-2 text-[12px] font-semibold ${plato.bajoObjetivo ? "text-bad" : "text-good"}`}>
+            margen {pct(plato.margen, 0)} · esperado {pct(plato.margenObjetivo, 0)}
+            {plato.bajoObjetivo ? " ⚠" : " ✓"}
+          </div>
+        )}
+      </div>
+    </Link>
   );
 }

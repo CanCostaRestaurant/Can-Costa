@@ -7,6 +7,7 @@ import { Chip } from "@/components/ui";
 import { type PlatoDetalle } from "@/lib/db/queries";
 import { cn, eur, pct } from "@/lib/utils";
 import { FotoPlato } from "./foto-plato";
+import { BuscadorProducto } from "./buscador-producto";
 import {
   actualizarIngrediente,
   actualizarPlato,
@@ -78,7 +79,7 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
             fotoUrl={plato.fotoUrl}
             emoji={emoji}
             onEmojiChange={setEmoji}
-            onEmojiBlur={() => emoji !== plato.emoji && ejecutar(() => actualizarPlato(plato.id, { emoji }))}
+            onGuardarEmoji={(e) => e !== plato.emoji && ejecutar(() => actualizarPlato(plato.id, { emoji: e }))}
           />
           <div>
             <input
@@ -179,6 +180,14 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
         </div>
       )}
 
+      {plato.tipoPlato === "bebida" && (
+        <div className="mb-3.5 rounded-[14px] border border-line bg-hover px-4 py-3 text-[13px] leading-relaxed text-ink-soft">
+          🍹 <b className="text-ink">Bebida:</b> pon el <b className="text-ink">coste de compra</b> (lo que te cuesta la
+          unidad) como una línea fija abajo — o elige el producto del catálogo si lo tienes — y arriba a la derecha el{" "}
+          <b className="text-ink">PVP</b>. El food cost se calcula solo.
+        </div>
+      )}
+
       <div className="grid grid-cols-[1.6fr_1fr] items-start gap-3.5 max-md:grid-cols-1">
         <div className="card overflow-hidden">
           <table className="w-full border-collapse">
@@ -246,18 +255,7 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
               {/* Alta: ingrediente de catálogo */}
               <tr className="border-b border-line bg-hover/60">
                 <td className="px-3.5 py-2.5" colSpan={2}>
-                  <select
-                    value={nuevoProductoId}
-                    onChange={(e) => setNuevoProductoId(e.target.value)}
-                    className="w-full rounded-lg border border-line bg-card px-2.5 py-2 text-sm outline-none focus:border-brand"
-                  >
-                    <option value="">+ Añadir producto del catálogo…</option>
-                    {productos.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre} · {p.precio}
-                      </option>
-                    ))}
-                  </select>
+                  <BuscadorProducto productos={productos} valor={nuevoProductoId} onElegir={setNuevoProductoId} />
                 </td>
                 <td className="px-3.5 py-2.5">
                   <input

@@ -8,20 +8,29 @@ export function NuevoPlatoBtn() {
   const router = useRouter();
   const [creando, startCrear] = useTransition();
 
-  function onCrear() {
+  function onCrear(tipo?: "bebida") {
     startCrear(async () => {
-      const res = await crearPlato();
+      const res = await crearPlato(tipo);
       if (res.ok && res.id) router.push(`/escandallos/${res.id}`);
     });
   }
 
   return (
-    <button
-      onClick={onCrear}
-      disabled={creando}
-      className="cursor-pointer rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-black disabled:opacity-60"
-    >
-      {creando ? "Creando…" : "+ Nuevo plato"}
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => onCrear("bebida")}
+        disabled={creando}
+        className="cursor-pointer rounded-xl border border-line bg-card px-4 py-2.5 text-sm font-semibold transition-colors hover:border-brand disabled:opacity-60"
+      >
+        + Nueva bebida
+      </button>
+      <button
+        onClick={() => onCrear()}
+        disabled={creando}
+        className="cursor-pointer rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-black disabled:opacity-60"
+      >
+        {creando ? "Creando…" : "+ Nuevo plato"}
+      </button>
+    </div>
   );
 }

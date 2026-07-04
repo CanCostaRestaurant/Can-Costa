@@ -2,9 +2,18 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, ImageOff, Loader2 } from "lucide-react";
+import { Camera, ImageOff, Loader2, Smile } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { guardarFotoPlato } from "../actions";
+
+// Emojis a mano para platos y bebidas (el usuario puede pegar cualquier otro).
+const EMOJIS = [
+  "🍽️", "🥗", "🍔", "🍟", "🍕", "🌮", "🥙", "🧆", "🥘", "🍲",
+  "🍜", "🍝", "🍛", "🍣", "🍤", "🍱", "🥟", "🐟", "🦐", "🦑",
+  "🐙", "🥩", "🍗", "🍖", "🥓", "🧀", "🥑", "🍅", "🥦", "🥔",
+  "🍦", "🍰", "🎂", "🍮", "🍩", "🍪", "🥐", "🍞",
+  "☕", "🍵", "🍺", "🍻", "🍷", "🥂", "🍸", "🍹", "🍾", "🥃", "🧉", "🥤", "🧊", "🍶",
+];
 
 // Comprime la foto en el navegador antes de subirla: la encajamos en un cuadrado
 // de LADO px (recorte centrado) y la exportamos como JPEG. Así la data URL que
@@ -42,18 +51,25 @@ export function FotoPlato({
   fotoUrl,
   emoji,
   onEmojiChange,
-  onEmojiBlur,
+  onGuardarEmoji,
 }: {
   platoId: string;
   fotoUrl: string | null;
   emoji: string;
   onEmojiChange: (v: string) => void;
-  onEmojiBlur: () => void;
+  onGuardarEmoji: (emoji: string) => void;
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [ocupado, startAccion] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [pickerAbierto, setPickerAbierto] = useState(false);
+
+  function elegirEmoji(e: string) {
+    onEmojiChange(e);
+    onGuardarEmoji(e);
+    setPickerAbierto(false);
+  }
 
   async function elegir(archivo: File | undefined) {
     if (!archivo) return;
@@ -122,7 +138,7 @@ export function FotoPlato({
             <input
               value={emoji}
               onChange={(e) => onEmojiChange(e.target.value)}
-              onBlur={onEmojiBlur}
+              onBlur={() => onGuardarEmoji(emoji)}
               onClick={(e) => e.stopPropagation()}
               className="w-full bg-transparent text-center text-[30px] outline-none"
               aria-label="Emoji del plato"
@@ -156,14 +172,61 @@ export function FotoPlato({
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={ocupado}
-        className="text-[11px] font-semibold text-ink-soft transition-colors hover:text-brand disabled:opacity-50"
-      >
-        {fotoUrl ? "Cambiar foto" : "Añadir foto"}
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={ocupado}
+          className="text-[11px] font-semibold text-ink-soft transition-colors hover:text-brand disabled:opacity-50"
+        >
+          {fotoUrl ? "Cambiar foto" : "Añadir foto"}
+        </button>
+        {!fotoUrl && (
+          <>
+            <span className="text-[11px] text-line">·</span>
+            <button
+              type="button"
+              onClick={() => setPickerAbierto((v) => !v)}
+              className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-ink-soft transition-colors hover:text-brand"
+            >
+              <Smile className="size-3" /> Emoji
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Selector de emoji: rejilla de comunes + pega cualquier otro */}
+      {pickerAbierto && !fotoUrl && (
+        <div className="relative">
+          <div className="absolute left-1/2 z-30 mt-1 w-[220px] -translate-x-1/2 rounded-xl border border-line bg-card p-2 shadow-(--shadow-lift)">
+            <div className="grid grid-cols-8 gap-0.5">
+              {EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => elegirEmoji(e)}
+                  className={cn(
+                    "grid size-6 place-items-center rounded-md text-[17px] transition-colors hover:bg-hover",
+                    emoji === e && "bg-brand-soft",
+                  )}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+            <input
+              defaultValue={emoji}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  elegirEmoji((e.target as HTMLInputElement).value.trim() || "🍽️");
+                }
+              }}
+              placeholder="…o pega tu emoji y Enter"
+              className="mt-2 w-full rounded-lg border border-line bg-card px-2 py-1.5 text-center text-sm outline-none focus:border-brand"
+            />
+          </div>
+        </div>
+      )}
 
       {error && <span className="max-w-[92px] text-center text-[10.5px] leading-tight text-bad">{error}</span>}
     </div>

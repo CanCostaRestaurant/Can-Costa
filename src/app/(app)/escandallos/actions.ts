@@ -23,12 +23,20 @@ function revalidar(platoId?: string): void {
   if (platoId) revalidatePath(`/escandallos/${platoId}`);
 }
 
-export async function crearPlato(): Promise<Resultado> {
+export async function crearPlato(tipo?: "bebida"): Promise<Resultado> {
   const db = getDb();
   if (!db) return SIN_BD;
+  const esBebida = tipo === "bebida";
   try {
     const [nuevo] = await conPlazo(
-      db.insert(schema.platos).values({ nombre: "Nuevo plato", emoji: "🍽️" }).returning({ id: schema.platos.id }),
+      db
+        .insert(schema.platos)
+        .values({
+          nombre: esBebida ? "Nueva bebida" : "Nuevo plato",
+          emoji: esBebida ? "🍹" : "🍽️",
+          tipoPlato: esBebida ? "bebida" : "principal",
+        })
+        .returning({ id: schema.platos.id }),
     );
     revalidar();
     return { ok: true, id: nuevo.id };
