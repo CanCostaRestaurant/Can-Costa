@@ -4,7 +4,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_SESION, verificarSesion, type RolUsuario } from "@/lib/auth";
 
-const RUTAS_PUBLICAS = ["/login", "/api/salud"];
+// El login NO cubre los endpoints de sistema: el cron y salud se autentican
+// por su cuenta (x-vercel-cron / CRON_SECRET). Si no, el gate de login los
+// redirige a /login y el cron nunca llega a ejecutar su handler.
+const RUTAS_PUBLICAS = ["/login", "/api/salud", "/api/cron"];
 
 function esPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((p) => pathname === p || pathname.startsWith(p + "/"));
