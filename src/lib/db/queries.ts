@@ -1639,6 +1639,10 @@ export type Recibo = {
   ivaPct: number;
   total: number;
   local: { nombre: string; cif: string | null; direccion: string | null; telefono: string | null; pie: string };
+  // Cliente asociado al ticket (para "ver quién compró" y prellenar la factura):
+  cliente: { id: string; nombre: string; telefono: string | null; cif: string | null; direccion: string | null } | null;
+  // Si ya se emitió factura de este ticket (no se puede emitir dos veces):
+  factura: { id: string; numero: string } | null;
 };
 
 export async function getRecibo(id: string): Promise<Recibo | null> {
@@ -1650,15 +1654,16 @@ export async function getRecibo(id: string): Promise<Recibo | null> {
         const [ajustes, filas] = await Promise.all([
           getAjustes(),
           db
-            .select({ ticket: schema.tickets, mesaNombre: schema.mesas.nombre })
+            .select({ ticket: schema.tickets, mesaNombre: schema.mesas.nombre, cliente: schema.clientes })
             .from(schema.tickets)
             .leftJoin(schema.mesas, eq(schema.tickets.mesaId, schema.mesas.id))
+            .leftJoin(schema.clientes, eq(schema.tickets.clienteId, schema.clientes.id))
             .where(eq(schema.tickets.id, id)),
         ]);
         const fila = filas[0];
         if (!fila || fila.ticket.estado !== "cobrado") return null;
 
-        const [lineas, pagos] = await Promise.all([
+        const [lineas, pagos, facturas] = await Promise.all([
           db
             .select()
             .from(schema.ticketLineas)
@@ -1669,6 +1674,11 @@ export async function getRecibo(id: string): Promise<Recibo | null> {
             .from(schema.ticketPagos)
             .where(eq(schema.ticketPagos.ticketId, id))
             .orderBy(asc(schema.ticketPagos.createdAt)),
+          db
+            .select({ id: schema.facturasVenta.id, numero: schema.facturasVenta.numero })
+            .from(schema.facturasVenta)
+            .where(and(eq(schema.facturasVenta.ticketId, id), eq(schema.facturasVenta.estado, "emitida")))
+            .limit(1),
         ]);
 
         const total = Number(fila.ticket.total ?? 0);
@@ -1719,12 +1729,186 @@ export async function getRecibo(id: string): Promise<Recibo | null> {
             telefono: ajustes.telefono,
             pie: ajustes.pieTicket,
           },
+          cliente: fila.cliente
+            ? {
+                id: fila.cliente.id,
+                nombre: fila.cliente.razonSocial || fila.cliente.nombre,
+                telefono: fila.cliente.telefono,
+                cif: fila.cliente.cif,
+                direccion: fila.cliente.direccionFiscal,
+              }
+            : null,
+          factura: facturas[0] ?? null,
         };
       })(),
     );
   } catch (e) {
     logFallo("getRecibo", e);
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Facturas de venta (emitidas al cliente) — registro para declarar
+// ---------------------------------------------------------------------
+
+type LineaFacturaVenta = { descripcion: string; cantidad: number; precioUnitario: number; total: number };
+
+export type FacturaVenta = {
+  id: string;
+  numero: string;
+  serie: string;
+  fecha: string; // ISO
+  fechaLegible: string; // "4 de julio de 2026"
+  estado: "emitida" | "anulada";
+  cliente: { id: string | null; nombre: string; cif: string | null; direccion: string | null };
+  lineas: LineaFacturaVenta[];
+  base: number;
+  iva: number;
+  ivaPct: number;
+  total: number;
+  ticketId: string | null;
+  emitidaPor: string | null;
+  local: { nombre: string; cif: string | null; direccion: string | null; telefono: string | null };
+};
+
+function fechaLarga(fechaISO: string): string {
+  return new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "long", year: "numeric" }).format(
+    new Date(fechaISO + "T12:00:00"),
+  );
+}
+
+export async function getFacturaVenta(id: string): Promise<FacturaVenta | null> {
+  const db = getDb();
+  if (!db) return null;
+  try {
+    return await conPlazo(
+      (async (): Promise<FacturaVenta | null> => {
+        const [ajustes, filas] = await Promise.all([
+          getAjustes(),
+          db.select().from(schema.facturasVenta).where(eq(schema.facturasVenta.id, id)).limit(1),
+        ]);
+        const f = filas[0];
+        if (!f) return null;
+        return {
+          id: f.id,
+          numero: f.numero,
+          serie: f.serie,
+          fecha: f.fecha,
+          fechaLegible: fechaLarga(f.fecha),
+          estado: f.estado,
+          cliente: { id: f.clienteId, nombre: f.clienteNombre, cif: f.clienteCif, direccion: f.clienteDireccion },
+          lineas: (f.lineas as LineaFacturaVenta[]).map((l) => ({
+            descripcion: l.descripcion,
+            cantidad: Number(l.cantidad),
+            precioUnitario: Number(l.precioUnitario),
+            total: Number(l.total),
+          })),
+          base: Number(f.base),
+          iva: Number(f.iva),
+          ivaPct: Number(f.ivaPct),
+          total: Number(f.total),
+          ticketId: f.ticketId,
+          emitidaPor: f.emitidaPor,
+          local: {
+            nombre: ajustes.nombreFiscal || "Can Costa",
+            cif: ajustes.cif,
+            direccion: ajustes.direccion,
+            telefono: ajustes.telefono,
+          },
+        };
+      })(),
+    );
+  } catch (e) {
+    logFallo("getFacturaVenta", e);
+    return null;
+  }
+}
+
+export type FacturaEmitidaFila = {
+  id: string;
+  numero: string;
+  fecha: string;
+  fechaLegible: string;
+  cliente: string;
+  clienteCif: string | null;
+  base: number;
+  iva: number;
+  total: number;
+  estado: "emitida" | "anulada";
+};
+
+export type FacturasEmitidas = {
+  mes: string; // "YYYY-MM"
+  etiquetaMes: string; // "julio 2026"
+  filas: FacturaEmitidaFila[];
+  totalBase: number;
+  totalIva: number;
+  total: number; // suma de emitidas (las anuladas no cuentan)
+  meses: { valor: string; etiqueta: string }[]; // meses con facturas, para el selector
+};
+
+export async function getFacturasEmitidas(mes: string): Promise<FacturasEmitidas> {
+  const etiqueta = (m: string) =>
+    new Intl.DateTimeFormat("es-ES", { month: "long", year: "numeric" }).format(new Date(m + "-01T12:00:00"));
+  const vacio: FacturasEmitidas = {
+    mes,
+    etiquetaMes: etiqueta(mes),
+    filas: [],
+    totalBase: 0,
+    totalIva: 0,
+    total: 0,
+    meses: [],
+  };
+  const db = getDb();
+  if (!db) return vacio;
+  try {
+    return await conPlazo(
+      (async (): Promise<FacturasEmitidas> => {
+        const [anio, m] = mes.split("-").map(Number);
+        const desde = `${mes}-01`;
+        const hasta = m === 12 ? `${anio + 1}-01-01` : `${anio}-${String(m + 1).padStart(2, "0")}-01`;
+        const [filas, mesesRaw] = await Promise.all([
+          db
+            .select()
+            .from(schema.facturasVenta)
+            .where(and(gte(schema.facturasVenta.fecha, desde), lt(schema.facturasVenta.fecha, hasta)))
+            .orderBy(desc(schema.facturasVenta.correlativo)),
+          db
+            .select({ mes: sql<string>`to_char(${schema.facturasVenta.fecha}, 'YYYY-MM')` })
+            .from(schema.facturasVenta)
+            .groupBy(sql`to_char(${schema.facturasVenta.fecha}, 'YYYY-MM')`)
+            .orderBy(sql`to_char(${schema.facturasVenta.fecha}, 'YYYY-MM') desc`),
+        ]);
+
+        const rows: FacturaEmitidaFila[] = filas.map((f) => ({
+          id: f.id,
+          numero: f.numero,
+          fecha: f.fecha,
+          fechaLegible: fechaLegible(f.fecha),
+          cliente: f.clienteNombre,
+          clienteCif: f.clienteCif,
+          base: Number(f.base),
+          iva: Number(f.iva),
+          total: Number(f.total),
+          estado: f.estado,
+        }));
+        const emitidas = rows.filter((r) => r.estado === "emitida");
+
+        return {
+          mes,
+          etiquetaMes: etiqueta(mes),
+          filas: rows,
+          totalBase: emitidas.reduce((a, r) => a + r.base, 0),
+          totalIva: emitidas.reduce((a, r) => a + r.iva, 0),
+          total: emitidas.reduce((a, r) => a + r.total, 0),
+          meses: mesesRaw.map((m) => ({ valor: m.mes, etiqueta: etiqueta(m.mes) })),
+        };
+      })(),
+    );
+  } catch (e) {
+    logFallo("getFacturasEmitidas", e);
+    return vacio;
   }
 }
 

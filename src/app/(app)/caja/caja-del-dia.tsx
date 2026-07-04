@@ -6,7 +6,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Banknote, Calculator, CreditCard, Lock, Minus, Plus, Printer, TriangleAlert, Users, X } from "lucide-react";
+import { Banknote, Calculator, ChevronRight, CreditCard, Lock, Minus, Plus, TriangleAlert, Users, X } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { type CierreDia } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
@@ -320,7 +320,12 @@ export function CajaDelDia({ datos, tickets }: { datos: CierreDia; tickets: Tick
           <table className="w-full border-collapse">
             <tbody>
               {tickets.map((t) => (
-                <tr key={t.id} className="border-b border-line last:border-none hover:bg-hover">
+                <tr
+                  key={t.id}
+                  onClick={() => router.push(`/tpv/recibo/${t.id}`)}
+                  title="Ver detalle del ticket"
+                  className="cursor-pointer border-b border-line last:border-none hover:bg-hover"
+                >
                   <td className="px-3 py-2.5 text-[13px] text-ink-soft whitespace-nowrap">{t.hora}</td>
                   <td className="px-2 py-2.5 text-[13px] font-semibold">{t.mesa}</td>
                   <td className="px-2 py-2.5 text-[13px] text-ink-soft">
@@ -341,13 +346,7 @@ export function CajaDelDia({ datos, tickets }: { datos: CierreDia; tickets: Tick
                     {eur(t.total)}
                   </td>
                   <td className="px-2 py-2.5 text-right">
-                    <Link
-                      href={`/tpv/recibo/${t.id}`}
-                      title="Ver / imprimir ticket"
-                      className="inline-grid size-7 cursor-pointer place-items-center rounded-lg text-ink-soft transition-colors hover:bg-chip hover:text-ink"
-                    >
-                      <Printer className="size-3.5" />
-                    </Link>
+                    <ChevronRight className="ml-auto size-4 text-ink-soft" />
                   </td>
                 </tr>
               ))}

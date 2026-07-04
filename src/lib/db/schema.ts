@@ -431,6 +431,55 @@ export const ticketLineas = pgTable(
 );
 
 // ---------------------------------------------------------------------
+// facturas_venta  (facturas EMITIDAS al cliente, a diferencia de la tabla
+// `facturas` que son las de COMPRA/gasto). Numeración correlativa sin huecos
+// por serie=año (como Dogterra), con snapshot inmutable de los datos fiscales
+// y de las líneas del ticket en el momento de emitir. Alimentan /facturacion,
+// el registro de facturas emitidas para declarar.
+// ---------------------------------------------------------------------
+
+export const facturaVentaEstadoEnum = pgEnum("factura_venta_estado", ["emitida", "anulada"]);
+
+export type FacturaVentaLinea = {
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  total: number;
+};
+
+export const facturasVenta = pgTable(
+  "facturas_venta",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    serie: text("serie").notNull(), // año, p. ej. "2026"
+    correlativo: integer("correlativo").notNull(), // 1, 2, 3… dentro de la serie
+    numero: text("numero").notNull(), // compuesto para mostrar/buscar: "2026/0001"
+    fecha: date("fecha").notNull(),
+    ticketId: uuid("ticket_id").references(() => tickets.id, { onDelete: "set null" }), // de qué venta salió
+    clienteId: uuid("cliente_id").references(() => clientes.id, { onDelete: "set null" }),
+    // Snapshot fiscal del cliente (inmutable: si luego editan la ficha, la factura no cambia):
+    clienteNombre: text("cliente_nombre").notNull(),
+    clienteCif: text("cliente_cif"),
+    clienteDireccion: text("cliente_direccion"),
+    // Snapshot de las líneas y del emisor en el momento de emitir:
+    lineas: jsonb("lineas").$type<FacturaVentaLinea[]>().notNull(),
+    base: numeric("base", { precision: 12, scale: 2 }).notNull(),
+    iva: numeric("iva", { precision: 12, scale: 2 }).notNull(),
+    ivaPct: numeric("iva_pct", { precision: 5, scale: 2 }).notNull(),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull(),
+    estado: facturaVentaEstadoEnum("estado").notNull().default("emitida"),
+    emitidaPor: text("emitida_por"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("facturas_venta_serie_corr_idx").on(t.serie, t.correlativo),
+    index("facturas_venta_fecha_idx").on(t.fecha),
+    index("facturas_venta_ticket_idx").on(t.ticketId),
+  ],
+);
+
+// ---------------------------------------------------------------------
 // RESERVAS (cover manager): asignación de mesa vía lib/reservas/asignador
 // ---------------------------------------------------------------------
 
@@ -441,6 +490,10 @@ export const clientes = pgTable("clientes", {
   nombre: text("nombre").notNull(),
   telefono: text("telefono"),
   email: text("email"),
+  // Datos fiscales para emitir factura (los pide el cliente que quiere factura):
+  cif: text("cif"), // NIF / CIF
+  razonSocial: text("razon_social"), // nombre fiscal si difiere del de pila
+  direccionFiscal: text("direccion_fiscal"), // domicilio fiscal
   notas: text("notas"),
   etiquetas: jsonb("etiquetas").$type<string[]>().notNull().default([]), // VIP, Familiar, Vino blanco…
   restricciones: text("restricciones"), // alergias e intolerancias

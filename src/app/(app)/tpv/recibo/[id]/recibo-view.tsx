@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Printer } from "lucide-react";
+import { ArrowLeft, Check, FileText, Printer, User } from "lucide-react";
 import { type Recibo } from "@/lib/db/queries";
 import { eur } from "@/lib/utils";
+import { FacturaBoton } from "./factura-boton";
 
 const METODO: Record<string, string> = { efectivo: "Efectivo", tarjeta: "Tarjeta", mixto: "Varios" };
 
@@ -46,20 +48,49 @@ export function ReciboView({
       )}
 
       {/* Barra de acciones (no sale en la impresión) */}
-      <div className="mb-4 flex items-center justify-between gap-2 print:hidden">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
         <button
           onClick={() => router.push("/tpv")}
           className="flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-2 text-[14px] font-semibold text-ink-soft transition-colors hover:bg-chip hover:text-ink"
         >
           <ArrowLeft className="size-4" /> {reciénCobrado ? "Nueva mesa" : "Mesas"}
         </button>
-        <button
-          onClick={() => window.print()}
-          className="flex cursor-pointer items-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-[14px] font-bold text-white transition-colors hover:bg-black"
-        >
-          <Printer className="size-4.5" /> Imprimir ticket
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {recibo.factura ? (
+            <Link
+              href={`/facturacion/${recibo.factura.id}`}
+              className="flex items-center gap-2 rounded-xl border border-line px-4 py-2.5 text-[14px] font-bold text-ink transition-colors hover:border-brand hover:text-brand"
+            >
+              <FileText className="size-4.5" /> Factura {recibo.factura.numero}
+            </Link>
+          ) : (
+            <FacturaBoton recibo={recibo} />
+          )}
+          <button
+            onClick={() => window.print()}
+            className="flex cursor-pointer items-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-[14px] font-bold text-white transition-colors hover:bg-black"
+          >
+            <Printer className="size-4.5" /> Imprimir ticket
+          </button>
+        </div>
       </div>
+
+      {/* Cliente asociado (en pantalla; no se imprime en el ticket) */}
+      {recibo.cliente && (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl border border-line bg-card px-4 py-3 print:hidden">
+          <div className="grid size-9 shrink-0 place-items-center rounded-full bg-chip text-ink-soft">
+            <User className="size-4.5" />
+          </div>
+          <div className="min-w-0 flex-1 text-[13px]">
+            <b className="block font-display text-[15px] font-bold tracking-tight">{recibo.cliente.nombre}</b>
+            <span className="text-ink-soft">
+              {[recibo.cliente.telefono, recibo.cliente.cif ? `NIF ${recibo.cliente.cif}` : null]
+                .filter(Boolean)
+                .join(" · ") || "Sin datos de contacto"}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* El ticket en sí — ancho de rollo térmico 80mm */}
       <div
