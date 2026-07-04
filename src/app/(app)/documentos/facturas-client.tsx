@@ -517,7 +517,14 @@ export function FacturasClient({
       </div>
 
       {abierta && abierta.lineasDetalle && (
-        <div className="card anim-in mt-3.5 overflow-hidden">
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-4 md:p-8"
+          onClick={() => setAbiertaId(null)}
+        >
+          <div
+            className="card anim-in w-full max-w-4xl overflow-hidden shadow-lift"
+            onClick={(e) => e.stopPropagation()}
+          >
           <div className="flex items-center gap-3.5 border-b border-line px-5.5 py-4.5 max-md:flex-wrap">
             <div className="grid size-[42px] shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
               <FileText className="size-5" />
@@ -721,6 +728,7 @@ export function FacturasClient({
                 {validando ? "Validando…" : "✓ Validar factura"}
               </button>
             )}
+          </div>
           </div>
         </div>
       )}
