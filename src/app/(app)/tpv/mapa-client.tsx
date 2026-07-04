@@ -15,18 +15,19 @@ function tiempo(minutos: number): string {
 }
 
 // Tamaño y forma de cada mesa en el plano (según capacidad y forma real).
+// En pantallas pequeñas (móvil) las mesas encogen para no solaparse.
 export function clasesMesaPlano(mesa: { capacidad: number; forma: string }): string {
   const tam =
     mesa.forma === "alargada"
       ? mesa.capacidad >= 4
-        ? "w-32 h-16"
-        : "w-28 h-14"
+        ? "w-32 h-16 max-md:w-20 max-md:h-10"
+        : "w-28 h-14 max-md:w-17 max-md:h-9"
       : mesa.capacidad <= 2
-        ? "w-17 h-17"
+        ? "w-17 h-17 max-md:w-11 max-md:h-11"
         : mesa.capacidad <= 4
-          ? "w-21 h-21"
-          : "w-25 h-25";
-  const forma = mesa.forma === "redonda" ? "rounded-full" : "rounded-2xl";
+          ? "w-21 h-21 max-md:w-13 max-md:h-13"
+          : "w-25 h-25 max-md:w-15 max-md:h-15";
+  const forma = mesa.forma === "redonda" ? "rounded-full" : "rounded-2xl max-md:rounded-lg";
   return `${tam} ${forma}`;
 }
 
@@ -41,9 +42,12 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
 
   const [vista, setVista] = useState<"plano" | "lista">("plano");
   useEffect(() => {
+    // En móvil la LISTA es la vista cómoda por defecto (el plano está
+    // pensado para la tablet en horizontal); se puede cambiar igualmente.
+    const esMovil = window.innerWidth < 768;
     const guardada = window.localStorage.getItem("tpv-vista");
     if (guardada === "lista" || guardada === "plano") setVista(guardada);
-    else if (colocadas.length === 0) setVista("lista");
+    else if (colocadas.length === 0 || esMovil) setVista("lista");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -74,7 +78,7 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
         titulo="TPV · Sala"
         subtitulo="Toca una mesa para abrir su comanda"
         derecha={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <div className="card flex overflow-hidden rounded-full! p-0.5 text-[13px] font-semibold">
               <button
                 onClick={() => cambiarVista("plano")}
@@ -97,19 +101,19 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
             </div>
             <Link
               href="/ventas"
-              className="card flex items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold"
+              className="card flex items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap"
             >
               <ChartColumn className="size-4 text-ink-soft" /> Ventas
             </Link>
             <Link
               href="/tpv/mesas"
-              className="card flex items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold"
+              className="card flex items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap"
             >
               <Settings2 className="size-4 text-ink-soft" /> Distribución
             </Link>
             <Link
               href="/caja"
-              className="flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[13.5px] font-semibold text-white transition-colors hover:bg-black"
+              className="flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[13.5px] font-semibold whitespace-nowrap text-white transition-colors hover:bg-black"
             >
               <Lock className="size-4" /> Cierre de caja
             </Link>
@@ -126,9 +130,8 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
       {vista === "plano" && colocadas.length > 0 ? (
         <>
           <div
-            className="card relative mb-4 w-full overflow-hidden"
+            className="card relative mb-4 aspect-[16/9] w-full overflow-hidden max-md:aspect-[4/3]"
             style={{
-              aspectRatio: "16/9",
               backgroundImage: "radial-gradient(circle, #E8E1D4 1.2px, transparent 1.2px)",
               backgroundSize: "26px 26px",
             }}
@@ -148,15 +151,17 @@ export function MapaClient({ mapa }: { mapa: MapaMesasTpv }) {
                     : "border-dashed border-[#C9BFAC] bg-card text-ink hover:border-brand",
                 )}
               >
-                <b className="font-display text-[13px] leading-tight font-bold">{mesa.nombre}</b>
+                <b className="font-display text-[13px] leading-tight font-bold max-md:text-[9.5px]">{mesa.nombre}</b>
                 {mesa.ticket ? (
                   <>
-                    <span className="font-display text-[13px] font-bold">{eur(mesa.ticket.total)}</span>
-                    <span className="text-[10px] opacity-80">{tiempo(mesa.ticket.minutos)}</span>
+                    <span className="font-display text-[13px] font-bold max-md:text-[9.5px]">
+                      {eur(mesa.ticket.total)}
+                    </span>
+                    <span className="text-[10px] opacity-80 max-md:hidden">{tiempo(mesa.ticket.minutos)}</span>
                   </>
                 ) : (
-                  <span className="flex items-center gap-0.5 text-[10.5px] text-ink-soft">
-                    <Users className="size-3" /> {mesa.capacidad}
+                  <span className="flex items-center gap-0.5 text-[10.5px] text-ink-soft max-md:text-[8.5px]">
+                    <Users className="size-3 max-md:size-2.5" /> {mesa.capacidad}
                   </span>
                 )}
               </button>
