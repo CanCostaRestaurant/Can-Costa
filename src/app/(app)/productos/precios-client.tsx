@@ -2,11 +2,20 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { type Producto } from "@/lib/mock";
 import { cn, eur } from "@/lib/utils";
-import { fijarPrecioPactado } from "./actions";
+import { crearProducto, fijarPrecioPactado } from "./actions";
+
+const FAMILIAS_NUEVO: { valor: Producto["familia"]; label: string }[] = [
+  { valor: "bebida", label: "Bebidas" },
+  { valor: "pescado", label: "Pescado" },
+  { valor: "carne", label: "Carne" },
+  { valor: "fruta-verdura", label: "Fruta y verdura" },
+  { valor: "seco", label: "Seco y aceites" },
+  { valor: "otros", label: "Otros" },
+];
 
 type Familia = "todos" | "subida" | Producto["familia"];
 
@@ -19,10 +28,20 @@ function esSubida(p: Producto): boolean {
 }
 
 export function PreciosClient({ productos }: { productos: Producto[] }) {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [familia, setFamilia] = useState<Familia>("todos");
   const [fProveedor, setFProveedor] = useState("");
   const [seleccionadoId, setSeleccionadoId] = useState<string | null>(productos[0]?.id ?? null);
+
+  // Alta manual de producto
+  const [creando, setCreando] = useState(false);
+  const [nProducto, startCrear] = useTransition();
+  const [errorAlta, setErrorAlta] = useState<string | null>(null);
+  const [nNombre, setNNombre] = useState("");
+  const [nFamilia, setNFamilia] = useState<Producto["familia"]>("bebida");
+  const [nUnidad, setNUnidad] = useState("ud");
+  const [nPrecio, setNPrecio] = useState("");
 
   const conSubida = productos.filter(esSubida).length;
   const proveedoresUnicos = useMemo(
@@ -33,11 +52,33 @@ export function PreciosClient({ productos }: { productos: Producto[] }) {
   const FAMILIAS: { id: Familia; label: string }[] = [
     { id: "todos", label: "Todos" },
     { id: "subida", label: `Con subida · ${conSubida}` },
+    { id: "bebida", label: "Bebidas" },
     { id: "pescado", label: "Pescado" },
     { id: "carne", label: "Carne" },
     { id: "fruta-verdura", label: "Fruta y verdura" },
     { id: "seco", label: "Seco y aceites" },
+    { id: "otros", label: "Otros" },
   ];
+
+  function guardarNuevo() {
+    setErrorAlta(null);
+    startCrear(async () => {
+      const res = await crearProducto({
+        nombre: nNombre,
+        familia: nFamilia,
+        unidad: nUnidad,
+        precioInicial: nPrecio.trim() ? parseFloat(nPrecio.replace(",", ".")) : null,
+      });
+      if (!res.ok) {
+        setErrorAlta(res.error ?? "No se pudo crear");
+        return;
+      }
+      setNNombre("");
+      setNPrecio("");
+      setCreando(false);
+      router.refresh();
+    });
+  }
 
   const visibles = useMemo(() => {
     const q = normaliza(busqueda.trim());
@@ -80,7 +121,7 @@ export function PreciosClient({ productos }: { productos: Producto[] }) {
           </select>
         </div>
 
-        <div className="mb-3.5 flex flex-wrap gap-2">
+        <div className="mb-3.5 flex flex-wrap items-center gap-2">
           {FAMILIAS.map((f) => (
             <button
               key={f.id}
@@ -95,7 +136,82 @@ export function PreciosClient({ productos }: { productos: Producto[] }) {
               {f.label}
             </button>
           ))}
+          <button
+            onClick={() => setCreando((v) => !v)}
+            className={cn(
+              "ml-auto inline-flex cursor-pointer items-center gap-1 rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition-all",
+              creando ? "border-brand bg-brand-soft text-brand" : "border-line bg-card text-ink hover:border-brand",
+            )}
+          >
+            <Plus className="size-3.5" /> Nuevo producto
+          </button>
         </div>
+
+        {creando && (
+          <div className="card mb-3.5 p-4">
+            <div className="mb-2 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
+              Nuevo producto de compra
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="min-w-[180px] flex-1 text-[11px] font-semibold tracking-wider text-ink-soft uppercase">
+                Nombre
+                <input
+                  value={nNombre}
+                  onChange={(e) => setNNombre(e.target.value)}
+                  placeholder="Coca-Cola 33cl"
+                  className="mt-1 block w-full rounded-lg border border-line bg-card px-2.5 py-2 font-body text-sm font-normal tracking-normal outline-none focus:border-brand"
+                />
+              </label>
+              <label className="text-[11px] font-semibold tracking-wider text-ink-soft uppercase">
+                Familia
+                <select
+                  value={nFamilia}
+                  onChange={(e) => setNFamilia(e.target.value as Producto["familia"])}
+                  className="mt-1 block rounded-lg border border-line bg-card px-2.5 py-2 font-body text-sm font-semibold tracking-normal outline-none focus:border-brand"
+                >
+                  {FAMILIAS_NUEVO.map((f) => (
+                    <option key={f.valor} value={f.valor}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="w-16 text-[11px] font-semibold tracking-wider text-ink-soft uppercase">
+                Unidad
+                <input
+                  value={nUnidad}
+                  onChange={(e) => setNUnidad(e.target.value)}
+                  placeholder="ud"
+                  className="mt-1 block w-full rounded-lg border border-line bg-card px-2 py-2 font-body text-sm font-normal tracking-normal outline-none focus:border-brand"
+                />
+              </label>
+              <label className="w-24 text-[11px] font-semibold tracking-wider text-ink-soft uppercase">
+                Precio compra
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={nPrecio}
+                  onChange={(e) => setNPrecio(e.target.value)}
+                  placeholder="€ (opc.)"
+                  className="mt-1 block w-full rounded-lg border border-line bg-card px-2 py-2 font-body text-sm font-normal tracking-normal outline-none focus:border-brand"
+                />
+              </label>
+              <button
+                onClick={guardarNuevo}
+                disabled={!nNombre.trim() || nProducto}
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-ink px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-black disabled:opacity-40"
+              >
+                {nProducto ? "Creando…" : "Crear"}
+              </button>
+            </div>
+            {errorAlta && <p className="mt-2 text-[12.5px] font-semibold text-bad">{errorAlta}</p>}
+            <p className="mt-2 text-[11.5px] leading-snug text-ink-soft">
+              El precio se irá actualizando solo cuando valides facturas con este producto. Para venderlo, crea una{" "}
+              <b className="text-ink">bebida/plato</b> en Escandallos y enlaza este producto como coste.
+            </p>
+          </div>
+        )}
 
         <div className="card overflow-hidden">
           <table className="w-full border-collapse">
