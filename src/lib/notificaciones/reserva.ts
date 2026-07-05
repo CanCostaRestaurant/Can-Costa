@@ -1,12 +1,14 @@
 // Confirmación automática de reserva al cliente, como CoverManager:
-// email (Resend) y/o SMS (Twilio), con enlace a Google Maps y botón de
-// añadir al calendario. Todo por fetch (sin dependencias) y env-driven:
-// si faltan las claves del proveedor, devuelve enviado:false con el motivo
-// y la reserva se crea igual (la notificación nunca bloquea).
+// email (Gmail SMTP — el mismo buzón que recibe las facturas por correo)
+// y/o SMS (Twilio), con enlace a Google Maps y botón de añadir al calendario.
+// Env-driven: si faltan las claves del proveedor, devuelve enviado:false con
+// el motivo y la reserva se crea igual (la notificación nunca bloquea).
 //
 // Env necesarias:
-//   Email → RESEND_API_KEY, EMAIL_FROM ("Can Costa <reservas@dominio.com>")
+//   Email → IMAP_USER + IMAP_PASSWORD (mismo Gmail que ya usa el buzón de
+//           facturas: la contraseña de aplicación autentica también en SMTP)
 //   SMS   → TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM (+34...)
+import { enviarCorreo } from "@/lib/correo/enviar";
 import type { MandosReservas } from "@/lib/reservas/config";
 
 export type DatosConfirmacion = {
@@ -60,11 +62,6 @@ export async function enviarEmailConfirmacion(
   mandos: MandosReservas,
 ): Promise<ResultadoEnvio> {
   if (!datos.email?.trim()) return { enviado: false, motivo: "la reserva no tiene email" };
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
-  if (!apiKey || !from) {
-    return { enviado: false, motivo: "email sin configurar (RESEND_API_KEY / EMAIL_FROM)" };
-  }
 
   const r = mandos.restaurante;
   const html = `
@@ -86,28 +83,13 @@ export async function enviarEmailConfirmacion(
     </p>
   </div>`;
 
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to: [datos.email.trim()],
-        subject: `Reserva confirmada en ${r.nombre} — ${fechaLarga(datos.fecha)} ${datos.hora}`,
-        html,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) {
-      const cuerpo = await res.text().catch(() => "");
-      console.error("[notificaciones] Resend respondió", res.status, cuerpo.slice(0, 300));
-      return { enviado: false, motivo: `el proveedor de email devolvió ${res.status}` };
-    }
-    return { enviado: true };
-  } catch (e) {
-    console.error("[notificaciones] email falló:", e instanceof Error ? e.message : e);
-    return { enviado: false, motivo: "no se pudo contactar con el proveedor de email" };
-  }
+  const res = await enviarCorreo({
+    para: datos.email.trim(),
+    asunto: `Reserva confirmada en ${r.nombre} — ${fechaLarga(datos.fecha)} ${datos.hora}`,
+    html,
+    nombreRemitente: r.nombre,
+  });
+  return res.enviado ? { enviado: true } : { enviado: false, motivo: res.motivo };
 }
 
 export async function enviarSmsConfirmacion(
