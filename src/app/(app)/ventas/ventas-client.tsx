@@ -6,9 +6,13 @@ import { useRouter } from "next/navigation";
 import { Banknote, CreditCard, Printer, Tablet, Users } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
 import { DatePicker } from "@/components/date-picker";
+import { Segmentado } from "@/components/segmentado";
+import { CifraAnimada } from "@/components/cifra-animada";
 import { type DesgloseDia, type VentaDia } from "@/lib/db/queries";
 import { cn, eur, pct } from "@/lib/utils";
 import { guardarVentaDia } from "./actions";
+
+type Franja = "todo" | "mediodia" | "noche";
 
 export function VentasClient({
   desglose,
@@ -26,6 +30,11 @@ export function VentasClient({
 
   const d = desglose;
   const hayTickets = d.numTickets > 0;
+  // Estado local (no URL param) porque no requiere recargar servidor: las 3
+  // franjas ya vienen precalculadas en desglose.franjas.
+  const [franja, setFranja] = useState<Franja>("todo");
+  const f = d.franjas[franja];
+  const hayEnFranja = f.numTickets > 0;
 
   function cambiarDia(dia: string) {
     router.push(dia === hoy ? "/ventas" : `/ventas?dia=${dia}`);
@@ -74,27 +83,56 @@ export function VentasClient({
         </div>
       )}
 
+      {hayTickets && (
+        <Segmentado
+          className="mb-3.5"
+          opciones={[
+            { etiqueta: "Todo", activo: franja === "todo", onClick: () => setFranja("todo") },
+            { etiqueta: "Mediodía", activo: franja === "mediodia", onClick: () => setFranja("mediodia") },
+            { etiqueta: "Noche", activo: franja === "noche", onClick: () => setFranja("noche") },
+          ]}
+        />
+      )}
+
       <div className="mb-3.5 grid grid-cols-4 gap-3.5 max-md:grid-cols-2">
-        <Kpi etiqueta="Total del día" valor={eur(hayTickets ? d.totalDia : (d.ventaManual ?? 0))}>
-          {hayTickets ? `${d.numTickets} tickets` : d.ventaManual !== null ? "apuntado a mano" : "sin ventas"}
+        <Kpi
+          etiqueta="Total del día"
+          valor={hayTickets ? <CifraAnimada valor={f.totalDia} /> : eur(d.ventaManual ?? 0)}
+        >
+          {hayTickets
+            ? `${f.numTickets} tickets${franja === "todo" ? "" : franja === "mediodia" ? " · mediodía" : " · noche"}`
+            : d.ventaManual !== null
+              ? "apuntado a mano"
+              : "sin ventas"}
         </Kpi>
-        <Kpi etiqueta="Ticket medio" valor={d.ticketMedio !== null ? eur(d.ticketMedio) : "—"}>
-          {d.comensales > 0 ? `${d.comensales} comensales` : "por ticket"}
+        <Kpi
+          etiqueta="Ticket medio"
+          valor={f.ticketMedio !== null ? <CifraAnimada valor={f.ticketMedio} /> : "—"}
+        >
+          {f.comensales > 0 ? `${f.comensales} comensales` : "por ticket"}
         </Kpi>
-        <Kpi etiqueta="Efectivo" valor={hayTickets ? eur(d.efectivo) : "—"}>
-          {hayTickets && d.totalDia > 0 ? pct((d.efectivo / d.totalDia) * 100, 0) + " del total" : "—"}
+        <Kpi etiqueta="Efectivo" valor={hayEnFranja ? <CifraAnimada valor={f.efectivo} /> : "—"}>
+          {hayEnFranja && f.totalDia > 0 ? pct((f.efectivo / f.totalDia) * 100, 0) + " del total" : "—"}
         </Kpi>
-        <Kpi etiqueta="Tarjeta" valor={hayTickets ? eur(d.tarjeta) : "—"}>
-          {hayTickets && d.totalDia > 0 ? pct((d.tarjeta / d.totalDia) * 100, 0) + " del total" : "—"}
+        <Kpi etiqueta="Tarjeta" valor={hayEnFranja ? <CifraAnimada valor={f.tarjeta} /> : "—"}>
+          {hayEnFranja && f.totalDia > 0 ? pct((f.tarjeta / f.totalDia) * 100, 0) + " del total" : "—"}
         </Kpi>
       </div>
 
       {hayTickets ? (
+        !hayEnFranja ? (
+          <div className="card mb-3.5 p-5.5 text-center">
+            <h3 className="font-display text-base font-bold tracking-tight">Sin ventas en esta franja</h3>
+            <p className="mt-1 text-[13.5px] text-ink-soft">
+              Prueba con {franja === "mediodia" ? '"Noche"' : '"Mediodía"'} o vuelve a &quot;Todo&quot;.
+            </p>
+          </div>
+        ) : (
         <div className="mb-3.5 grid grid-cols-[1.2fr_1fr] items-start gap-3.5 max-md:grid-cols-1">
           {/* Ranking de platos con margen */}
           <div className="card p-5.5 pb-3">
             <h3 className="mb-2 font-display text-base font-bold tracking-tight">Qué se ha vendido</h3>
-            {d.platos.map((p) => (
+            {f.platos.map((p) => (
               <div key={p.nombre} className="flex items-center gap-3 border-b border-line py-2.5 last:border-none">
                 <span className="text-lg">{p.emoji ?? "🍽️"}</span>
                 <div className="min-w-0 flex-1">
@@ -109,12 +147,12 @@ export function VentasClient({
                 <b className="w-20 text-right font-display text-[15px] font-bold">{eur(p.importe)}</b>
               </div>
             ))}
-            {d.extras.length > 0 && (
+            {f.extras.length > 0 && (
               <>
                 <div className="mt-2 border-t border-line pt-2 text-[11.5px] font-semibold tracking-wider text-ink-soft uppercase">
                   Bebidas y extras
                 </div>
-                {d.extras.map((e) => (
+                {f.extras.map((e) => (
                   <div key={e.descripcion} className="flex items-center gap-3 border-b border-line py-2 text-sm last:border-none">
                     <span className="min-w-0 flex-1 font-semibold">{e.descripcion}</span>
                     <small className="text-xs text-ink-soft">×{e.unidades}</small>
@@ -141,7 +179,7 @@ export function VentasClient({
                 </tr>
               </thead>
               <tbody>
-                {d.tickets.map((t) => (
+                {f.tickets.map((t) => (
                   <tr key={t.id} className="border-b border-line last:border-none">
                     <td className="px-3 py-2.5 text-sm text-ink-soft">{t.hora}</td>
                     <td className="px-3 py-2.5 text-sm font-semibold">{t.mesa}</td>
@@ -169,6 +207,7 @@ export function VentasClient({
             </table>
           </div>
         </div>
+        )
       ) : (
         <div className="card mb-3.5 flex flex-wrap items-end justify-between gap-4 p-5.5">
           <div>
@@ -241,7 +280,7 @@ export function VentasClient({
   );
 }
 
-function Kpi({ etiqueta, valor, children }: { etiqueta: string; valor: string; children: React.ReactNode }) {
+function Kpi({ etiqueta, valor, children }: { etiqueta: string; valor: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="card p-5">
       <div className="text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">{etiqueta}</div>
