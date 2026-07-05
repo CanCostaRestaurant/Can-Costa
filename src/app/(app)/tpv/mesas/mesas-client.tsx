@@ -54,6 +54,54 @@ function resolverPos(
   return { x: (cx0 / W) * 100, y: (cy0 / H) * 100 };
 }
 
+// Imanes de alineación (todo en px). Si el centro/borde de la mesa que arrastro
+// queda a menos de IMAN_PX de alinearse con otra mesa —mismo eje central, mismo
+// borde, o justo pegada al lado con el hueco estándar— se ajusta solo. Devuelve
+// también la línea guía (gx/gy) que se dibuja cuando el enganche es una
+// alineación (los enganches "pegada al lado" no dibujan guía).
+const IMAN_PX = 7;
+
+function imanar(
+  wpx: number,
+  hpx: number,
+  cx: number,
+  cy: number,
+  otras: RectPx[],
+): { cx: number; cy: number; gx: number | null; gy: number | null } {
+  let bx: { v: number; d: number; g: number | null } | null = null;
+  let by: { v: number; d: number; g: number | null } | null = null;
+  for (const o of otras) {
+    const candX = [
+      { v: o.cx, g: o.cx }, // centros alineados
+      { v: o.cx - o.w / 2 + wpx / 2, g: o.cx - o.w / 2 }, // bordes izquierdos
+      { v: o.cx + o.w / 2 - wpx / 2, g: o.cx + o.w / 2 }, // bordes derechos
+      { v: o.cx + o.w / 2 + GAP_PX + wpx / 2, g: null }, // pegada a su derecha
+      { v: o.cx - o.w / 2 - GAP_PX - wpx / 2, g: null }, // pegada a su izquierda
+    ];
+    for (const c of candX) {
+      const d = Math.abs(cx - c.v);
+      if (d <= IMAN_PX && (!bx || d < bx.d)) bx = { v: c.v, d, g: c.g };
+    }
+    const candY = [
+      { v: o.cy, g: o.cy }, // centros a la misma altura
+      { v: o.cy - o.h / 2 + hpx / 2, g: o.cy - o.h / 2 }, // bordes superiores
+      { v: o.cy + o.h / 2 - hpx / 2, g: o.cy + o.h / 2 }, // bordes inferiores
+      { v: o.cy + o.h / 2 + GAP_PX + hpx / 2, g: null }, // pegada debajo
+      { v: o.cy - o.h / 2 - GAP_PX - hpx / 2, g: null }, // pegada encima
+    ];
+    for (const c of candY) {
+      const d = Math.abs(cy - c.v);
+      if (d <= IMAN_PX && (!by || d < by.d)) by = { v: c.v, d, g: c.g };
+    }
+  }
+  return {
+    cx: bx ? bx.v : cx,
+    cy: by ? by.v : cy,
+    gx: bx ? bx.g : null,
+    gy: by ? by.g : null,
+  };
+}
+
 export type MesaFila = {
   id: string;
   nombre: string;
@@ -95,6 +143,7 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
   );
   const [arrastrando, setArrastrando] = useState<string | null>(null);
   const [solapando, setSolapando] = useState(false); // la mesa que arrastro pisa a otra
+  const [guias, setGuias] = useState<{ x: number | null; y: number | null }>({ x: null, y: null }); // líneas de alineación (%)
 
   const activas = mesas.filter((m) => m.activo);
   const colocadas = activas.filter((m) => posiciones[m.id]);
@@ -191,14 +240,25 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
           if (!arrastrando) return;
           const pos = posDesdeEvento(e);
           if (!pos) return;
-          setPosiciones((prev) => ({ ...prev, [arrastrando]: pos }));
-          // Aviso visual: se pinta en rojo si pisaría a otra mesa.
           const rect = lienzo.current?.getBoundingClientRect();
           const mesa = activas.find((m) => m.id === arrastrando);
+          let fin = pos;
           if (rect && mesa) {
-            const yo = rectPx(mesa, pos.x, pos.y, rect.width, rect.height);
-            setSolapando(otrosRect(arrastrando, rect.width, rect.height).some((o) => solapan(yo, o)));
+            const d = dimsMesaPlano(mesa);
+            const wpx = (d.w / 100) * rect.width;
+            const hpx = (d.h / 100) * rect.width;
+            const otras = otrosRect(arrastrando, rect.width, rect.height);
+            // Imán: alinea con las mesas cercanas y muestra la guía.
+            const im = imanar(wpx, hpx, (pos.x / 100) * rect.width, (pos.y / 100) * rect.height, otras);
+            fin = { x: (im.cx / rect.width) * 100, y: (im.cy / rect.height) * 100 };
+            setGuias({
+              x: im.gx !== null ? (im.gx / rect.width) * 100 : null,
+              y: im.gy !== null ? (im.gy / rect.height) * 100 : null,
+            });
+            // Aviso visual: se pinta en rojo si pisaría a otra mesa.
+            setSolapando(otras.some((o) => solapan({ cx: im.cx, cy: im.cy, w: wpx, h: hpx }, o)));
           }
+          setPosiciones((prev) => ({ ...prev, [arrastrando]: fin }));
         }}
         onPointerUp={() => {
           if (!arrastrando) return;
@@ -206,6 +266,7 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
           const pos = posiciones[id];
           setArrastrando(null);
           setSolapando(false);
+          setGuias({ x: null, y: null });
           if (!pos) return;
           // Al soltar, la mesa se aparta sola al hueco libre más cercano.
           const rect = lienzo.current?.getBoundingClientRect();
@@ -249,6 +310,13 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
             </div>
           );
         })}
+        {/* Guías de alineación mientras arrastras (se enganchan solas) */}
+        {guias.x !== null && (
+          <div className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-brand" style={{ left: `${guias.x}%` }} />
+        )}
+        {guias.y !== null && (
+          <div className="pointer-events-none absolute right-0 left-0 z-20 h-px bg-brand" style={{ top: `${guias.y}%` }} />
+        )}
         {colocadas.length === 0 && (
           <p className="absolute inset-0 grid place-items-center text-sm text-ink-soft">
             Coloca tus mesas con el botón "Al plano" de la lista de abajo
