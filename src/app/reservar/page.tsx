@@ -77,71 +77,52 @@ export default async function ReservarPage() {
       <div className="absolute inset-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={FOTO_PORTADA} alt="" aria-hidden className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/55 to-black/75" />
       </div>
 
-      <div className="relative z-10 mx-auto flex min-h-svh w-full max-w-6xl items-center px-4 py-8 md:py-14">
-        <div className="anim-in grid w-full items-stretch gap-3.5 lg:grid-cols-[390px_minmax(0,1fr)]">
-          {/* ── Tarjeta del restaurante: sobria, editorial ── */}
-          <aside className="flex flex-col rounded-[10px] bg-white/[.97] p-8 shadow-xl backdrop-blur-sm max-lg:order-2 md:p-10">
-            {/* Monograma con borde fino, sin color de marca */}
-            <div className="grid size-14 place-items-center border border-ink/25">
-              <span className="font-[Georgia,'Times_New_Roman',serif] text-[26px] leading-none text-ink">
-                {r.nombre.slice(0, 1)}
-              </span>
-            </div>
-
-            <h1 className="mt-6 font-[Georgia,'Times_New_Roman',serif] text-[32px] leading-tight font-normal tracking-tight text-ink">
-              {r.nombre}
-            </h1>
-            <div className="mt-3 h-px w-10 bg-ink/30" />
-
-            <dl className="mt-6 flex flex-col text-[13.5px] leading-relaxed">
+      <div className="relative z-10 mx-auto flex min-h-svh w-full max-w-[900px] flex-col items-center px-4 py-10 md:py-14">
+        {/* ── Wordmark: el "logo" tipográfico de la casa ── */}
+        <header className="anim-in mb-8 text-center text-white">
+          <div className="mx-auto mb-5 flex items-center justify-center gap-4">
+            <span className="h-px w-16 bg-white/40 md:w-24" />
+            <span className="font-[Georgia,'Times_New_Roman',serif] text-[15px] text-white/70">✦</span>
+            <span className="h-px w-16 bg-white/40 md:w-24" />
+          </div>
+          <h1 className="font-[Georgia,'Times_New_Roman',serif] text-[38px] leading-none font-normal tracking-[0.18em] uppercase md:text-[46px]">
+            {r.nombre}
+          </h1>
+          <p className="mt-3 text-[11px] font-semibold tracking-[0.3em] text-white/70 uppercase">
+            Restaurant · Barcelona
+          </p>
+          {(r.direccion || r.telefono) && (
+            <p className="mt-5 text-[13px] text-white/75">
               {r.direccion && (
-                <div className="border-b border-ink/10 py-3 first:pt-0">
-                  <dt className="text-[10.5px] font-semibold tracking-[0.14em] text-ink-soft uppercase">
-                    Dirección
-                  </dt>
-                  <dd className="mt-0.5">
-                    <a
-                      href={mapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-ink underline-offset-4 hover:underline"
-                    >
-                      {r.direccion}
-                    </a>
-                  </dd>
-                </div>
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline-offset-4 hover:text-white hover:underline"
+                >
+                  {r.direccion}
+                </a>
               )}
+              {r.direccion && r.telefono && <span className="mx-2.5 text-white/40">·</span>}
               {r.telefono && (
-                <div className="border-b border-ink/10 py-3">
-                  <dt className="text-[10.5px] font-semibold tracking-[0.14em] text-ink-soft uppercase">
-                    Teléfono
-                  </dt>
-                  <dd className="mt-0.5">
-                    <a href={`tel:${r.telefono.replace(/\s/g, "")}`} className="text-ink underline-offset-4 hover:underline">
-                      {r.telefono}
-                    </a>
-                  </dd>
-                </div>
+                <a href={`tel:${r.telefono.replace(/\s/g, "")}`} className="underline-offset-4 hover:text-white hover:underline">
+                  {r.telefono}
+                </a>
               )}
-              <div className="py-3">
-                <dt className="text-[10.5px] font-semibold tracking-[0.14em] text-ink-soft uppercase">
-                  Duración de la reserva
-                </dt>
-                <dd className="mt-0.5 text-ink">{textoDuracion(mandos.doblaje.hasta4)} aprox.</dd>
-              </div>
-            </dl>
-
-            <p className="mt-auto pt-8 text-[12px] text-ink-soft">
-              Reserva sin comisiones, directamente con {r.nombre}.
             </p>
-          </aside>
+          )}
+        </header>
 
-          {/* ── Motor de reserva ── */}
-          <ReservarWidget nombreLocal={r.nombre} telefono={r.telefono} mapsUrl={mapsUrl} />
-        </div>
+        {/* ── Motor de reserva (calendario + horas) ── */}
+        <ReservarWidget nombreLocal={r.nombre} telefono={r.telefono} mapsUrl={mapsUrl} />
+
+        <p className="anim-in mt-6 text-center text-[12px] text-white/60" style={{ animationDelay: "250ms" }}>
+          Reserva sin comisiones, directamente con {r.nombre} · Duración aproximada de la mesa:{" "}
+          {textoDuracion(mandos.doblaje.hasta4)}
+        </p>
       </div>
     </main>
   );

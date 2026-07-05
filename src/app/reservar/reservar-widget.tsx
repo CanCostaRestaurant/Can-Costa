@@ -1,32 +1,36 @@
 "use client";
 
-// Motor de reserva público en dos pasos (1. Reserva → 2. Cliente), estilo
-// Last.app/CoverManager. Filosofía anti-pérdida de reserva: la parrilla
-// muestra TODAS las horas del turno como elegibles (nunca tachadas); solo al
-// darle a Continuar se comprueba la disponibilidad en fresco y, si esa hora
-// está completa, se proponen las horas libres más cercanas para que el
-// cliente no se vaya sin reservar.
+// Motor de reserva público en dos pasos (1. Reserva → 2. Cliente), con
+// calendario mensual real (estilo CoverManager pero sobrio). Filosofía
+// anti-pérdida de reserva: la parrilla muestra TODAS las horas del turno como
+// elegibles (nunca tachadas); solo al darle a Continuar se comprueba la
+// disponibilidad en fresco y, si esa hora está completa, se proponen las
+// horas libres más cercanas para que el cliente no se vaya sin reservar.
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ArrowLeft, CalendarCheck, Check, ChevronRight, MapPin } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarCheck,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { disponibilidadPublica, reservarPublica, type ResultadoReservaWeb } from "./actions";
 import type { SlotDisponibilidad } from "@/lib/reservas/disponibilidad";
 
 const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const MESES_LARGOS = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
 
-// Próximos 30 días como opciones de fecha (etiqueta amable: Hoy / Mañana / …).
-function opcionesFecha(): { valor: string; etiqueta: string }[] {
-  const hoy = new Date();
-  return Array.from({ length: 30 }, (_, i) => {
-    const d = new Date(hoy);
-    d.setDate(hoy.getDate() + i);
-    const valor = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const etiqueta =
-      i === 0 ? "Hoy" : i === 1 ? "Mañana" : `${DIAS[d.getDay()]} ${d.getDate()} ${MESES[d.getMonth()]}`;
-    return { valor, etiqueta };
-  });
-}
+// Hasta cuántos días vista se puede reservar online.
+const DIAS_VISTA = 60;
+
+const isoDe = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function fechaLarga(fechaISO: string): string {
   const [y, m, d] = fechaISO.split("-").map(Number);
@@ -47,6 +51,91 @@ const CLASE_ETIQUETA = "text-[10.5px] font-semibold tracking-[0.14em] text-ink-s
 const CLASE_CONTROL =
   "w-full rounded-[6px] border border-ink/20 bg-white px-3.5 py-2.5 text-[14.5px] text-ink outline-none transition-colors focus:border-ink";
 
+// ── Calendario mensual (lunes primero, ventana hoy → hoy+60 días) ──────
+function Calendario({ fecha, onFecha }: { fecha: string; onFecha: (v: string) => void }) {
+  const hoy = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+  const max = useMemo(() => {
+    const d = new Date(hoy);
+    d.setDate(hoy.getDate() + DIAS_VISTA);
+    return d;
+  }, [hoy]);
+
+  const [mes, setMes] = useState(() => new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+
+  const primeraCelda = (mes.getDay() + 6) % 7; // lunes = 0
+  const diasEnMes = new Date(mes.getFullYear(), mes.getMonth() + 1, 0).getDate();
+  const puedeAtras = mes.getTime() > new Date(hoy.getFullYear(), hoy.getMonth(), 1).getTime();
+  const puedeAdelante = new Date(mes.getFullYear(), mes.getMonth() + 1, 1).getTime() <= max.getTime();
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <button
+          type="button"
+          disabled={!puedeAtras}
+          onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() - 1, 1))}
+          aria-label="Mes anterior"
+          className="grid size-8 cursor-pointer place-items-center rounded-[6px] border border-ink/15 text-ink transition-colors hover:border-ink disabled:cursor-default disabled:opacity-25"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+        <div className="font-[Georgia,'Times_New_Roman',serif] text-[16px] text-ink">
+          {MESES_LARGOS[mes.getMonth()]} {mes.getFullYear()}
+        </div>
+        <button
+          type="button"
+          disabled={!puedeAdelante}
+          onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() + 1, 1))}
+          aria-label="Mes siguiente"
+          className="grid size-8 cursor-pointer place-items-center rounded-[6px] border border-ink/15 text-ink transition-colors hover:border-ink disabled:cursor-default disabled:opacity-25"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {["L", "M", "X", "J", "V", "S", "D"].map((d) => (
+          <span key={d} className="grid h-8 place-items-center text-[10.5px] font-semibold tracking-wider text-ink-soft">
+            {d}
+          </span>
+        ))}
+        {Array.from({ length: primeraCelda }, (_, i) => (
+          <span key={`v${i}`} />
+        ))}
+        {Array.from({ length: diasEnMes }, (_, i) => {
+          const d = new Date(mes.getFullYear(), mes.getMonth(), i + 1);
+          const valor = isoDe(d);
+          const fuera = d.getTime() < hoy.getTime() || d.getTime() > max.getTime();
+          const activo = valor === fecha;
+          const esHoy = d.getTime() === hoy.getTime();
+          return (
+            <button
+              key={valor}
+              type="button"
+              disabled={fuera}
+              onClick={() => onFecha(valor)}
+              className={cn(
+                "grid h-9 cursor-pointer place-items-center rounded-[6px] border text-[13px] tabular-nums transition-colors",
+                activo
+                  ? "border-ink bg-ink font-semibold text-white"
+                  : fuera
+                    ? "cursor-default border-transparent text-ink/25"
+                    : cn("border-transparent text-ink hover:border-ink", esHoy && "border-ink/30"),
+              )}
+            >
+              {i + 1}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ReservarWidget({
   nombreLocal,
   telefono,
@@ -56,10 +145,10 @@ export function ReservarWidget({
   telefono: string;
   mapsUrl: string;
 }) {
-  const fechas = useMemo(opcionesFecha, []);
+  const hoyISO = useMemo(() => isoDe(new Date()), []);
   const [paso, setPaso] = useState<"reserva" | "cliente">("reserva");
   const [pax, setPax] = useState(2);
-  const [fecha, setFecha] = useState(fechas[0].valor);
+  const [fecha, setFecha] = useState(hoyISO);
   const [hora, setHora] = useState<string | null>(null);
 
   const [slots, setSlots] = useState<SlotDisponibilidad[] | null>(null);
@@ -182,7 +271,7 @@ export function ReservarWidget({
     })();
 
     return (
-      <section className="anim-in flex flex-col justify-center rounded-[10px] bg-white/[.97] p-8 text-center shadow-xl backdrop-blur-sm md:p-10">
+      <section className="anim-in w-full rounded-[10px] bg-white/[.97] p-8 text-center shadow-xl backdrop-blur-sm md:p-10">
         <div className="mx-auto grid size-12 place-items-center rounded-full border border-ink/20 text-ink">
           <Check className="size-5" />
         </div>
@@ -229,7 +318,7 @@ export function ReservarWidget({
 
   // ── Motor en dos pasos ──
   return (
-    <section className="anim-in rounded-[10px] bg-white/[.97] p-7 shadow-xl backdrop-blur-sm md:p-9">
+    <section className="anim-in w-full rounded-[10px] bg-white/[.97] p-7 shadow-xl backdrop-blur-sm md:p-9">
       {/* Migas de paso: 1. Reserva → 2. Cliente */}
       <div className="mb-7 flex items-center gap-4 border-b border-ink/10 pb-3">
         <button
@@ -255,14 +344,16 @@ export function ReservarWidget({
       </div>
 
       {paso === "reserva" ? (
-        <>
-          <h2 className="mb-5 font-[Georgia,'Times_New_Roman',serif] text-[22px] font-normal tracking-tight text-ink">
-            Detalles de la reserva
-          </h2>
+        <div className="grid gap-8 md:grid-cols-[300px_minmax(0,1fr)]">
+          {/* Calendario mensual */}
+          <div className="md:border-r md:border-ink/10 md:pr-8">
+            <div className={cn(CLASE_ETIQUETA, "mb-3")}>Fecha</div>
+            <Calendario fecha={fecha} onFecha={setFecha} />
+          </div>
 
-          {/* Selectores Grupo / Fecha */}
-          <div className="mb-6 grid grid-cols-2 gap-3">
-            <label className="block">
+          {/* Personas + horas */}
+          <div>
+            <label className="mb-5 block max-w-[220px]">
               <span className={cn(CLASE_ETIQUETA, "mb-1.5 block")}>Comensales</span>
               <select
                 value={pax}
@@ -276,114 +367,110 @@ export function ReservarWidget({
                 ))}
               </select>
             </label>
-            <label className="block">
-              <span className={cn(CLASE_ETIQUETA, "mb-1.5 block")}>Fecha</span>
-              <select
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-                className={cn(CLASE_CONTROL, "cursor-pointer")}
-              >
-                {fechas.map((f) => (
-                  <option key={f.valor} value={f.valor}>
-                    {f.etiqueta}
-                  </option>
+
+            {/* Parrilla de horas: TODAS elegibles (la disponibilidad se
+                comprueba al continuar, para no perder la reserva de entrada) */}
+            <div className={cn(CLASE_ETIQUETA, "mb-2.5")}>Horarios · {fechaLarga(fecha)}</div>
+
+            {cargando && (
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                {Array.from({ length: 10 }, (_, i) => (
+                  <div key={i} className="h-10 animate-pulse rounded-[6px] bg-ink/5" />
                 ))}
-              </select>
-            </label>
-          </div>
-
-          {/* Parrilla de horas: TODAS elegibles (la disponibilidad se
-              comprueba al continuar, para no perder la reserva de entrada) */}
-          <div className={cn(CLASE_ETIQUETA, "mb-2.5")}>Horarios</div>
-
-          {cargando && (
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
-              {Array.from({ length: 10 }, (_, i) => (
-                <div key={i} className="h-10 animate-pulse rounded-[6px] bg-ink/5" />
-              ))}
-            </div>
-          )}
-
-          {slots !== null && slots.length === 0 && !cargando && (
-            <p className="rounded-[6px] border border-ink/10 bg-ink/[.03] px-3.5 py-3 text-[13px] text-ink-soft">
-              No hay horario de reservas para este día. Prueba con otra fecha o llámanos
-              {telefono ? ` al ${telefono}` : ""}.
-            </p>
-          )}
-
-          {!cargando &&
-            servicios.map((servicio) => (
-              <div key={servicio} className="mb-4 last:mb-0">
-                <div className="mb-2 text-[13px] font-medium text-ink-soft">{servicio}</div>
-                <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
-                  {(slots ?? [])
-                    .filter((s) => s.servicio === servicio)
-                    .map((s) => (
-                      <button
-                        key={s.hora}
-                        type="button"
-                        onClick={() => {
-                          setHora(s.hora);
-                          setHoraOcupada(null);
-                          setAlternativas(null);
-                        }}
-                        className={cn(
-                          "cursor-pointer rounded-[6px] border py-2.5 text-[13.5px] font-medium tabular-nums transition-colors",
-                          hora === s.hora
-                            ? "border-ink bg-ink text-white"
-                            : "border-ink/20 bg-white text-ink hover:border-ink",
-                        )}
-                      >
-                        {s.hora}
-                      </button>
-                    ))}
-                </div>
               </div>
-            ))}
+            )}
 
-          {/* Hora completa → alternativas cercanas (cross-selling de horas) */}
-          {horaOcupada && alternativas && (
-            <div className="anim-in mt-5 rounded-[6px] border border-[#E3D9C2] bg-[#FBF7EC] p-4">
-              <p className="text-[13.5px] font-semibold text-[#5C4A17]">
-                A las {horaOcupada} estamos completos para {pax}{" "}
-                {pax === 1 ? "persona" : "personas"}.
+            {slots !== null && slots.length === 0 && !cargando && (
+              <p className="rounded-[6px] border border-ink/10 bg-ink/[.03] px-3.5 py-3 text-[13px] text-ink-soft">
+                No hay horario de reservas para este día. Prueba con otra fecha o llámanos
+                {telefono ? ` al ${telefono}` : ""}.
               </p>
-              {alternativas.length > 0 ? (
-                <>
-                  <p className="mt-0.5 mb-3 text-[13px] text-[#5C4A17]">
-                    Estas horas sí están disponibles — elige una y continúa:
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {alternativas.map((s) => (
-                      <button
-                        key={s.hora}
-                        type="button"
-                        onClick={() => elegirAlternativa(s.hora)}
-                        className="cursor-pointer rounded-[6px] border border-ink/25 bg-white px-4 py-2 text-[13.5px] font-medium tabular-nums text-ink transition-colors hover:bg-ink hover:text-white"
-                      >
-                        {s.hora}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p className="mt-0.5 text-[13px] text-[#5C4A17]">
-                  Ese día lo tenemos completo. Prueba con otra fecha
-                  {telefono ? ` o llámanos al ${telefono}` : ""}.
-                </p>
-              )}
-            </div>
-          )}
+            )}
 
-          <button
-            onClick={continuar}
-            disabled={!hora || comprobando || cargando}
-            className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2 rounded-[6px] bg-ink px-5 py-3.5 text-[12.5px] font-semibold tracking-[0.12em] text-white uppercase transition-colors hover:bg-black disabled:cursor-default disabled:opacity-30"
-          >
-            {comprobando ? "Comprobando…" : "Continuar"}
-            {!comprobando && <ChevronRight className="size-4" />}
-          </button>
-        </>
+            {!cargando &&
+              servicios.map((servicio) => (
+                <div key={servicio} className="mb-4 last:mb-0">
+                  <div className="mb-2 text-[13px] font-medium text-ink-soft">{servicio}</div>
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                    {(slots ?? [])
+                      .filter((s) => s.servicio === servicio)
+                      .map((s) => (
+                        <button
+                          key={s.hora}
+                          type="button"
+                          onClick={() => {
+                            setHora(s.hora);
+                            setHoraOcupada(null);
+                            setAlternativas(null);
+                          }}
+                          className={cn(
+                            "cursor-pointer rounded-[6px] border py-2.5 text-[13.5px] font-medium tabular-nums transition-colors",
+                            hora === s.hora
+                              ? "border-ink bg-ink text-white"
+                              : "border-ink/20 bg-white text-ink hover:border-ink",
+                          )}
+                        >
+                          {s.hora}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              ))}
+
+            {/* Hora completa → alternativas cercanas (cross-selling de horas) */}
+            {horaOcupada && alternativas && (
+              <div className="anim-in mt-5 rounded-[6px] border border-[#E3D9C2] bg-[#FBF7EC] p-4">
+                <p className="text-[13.5px] font-semibold text-[#5C4A17]">
+                  A las {horaOcupada} estamos completos para {pax}{" "}
+                  {pax === 1 ? "persona" : "personas"}.
+                </p>
+                {alternativas.length > 0 ? (
+                  <>
+                    <p className="mt-0.5 mb-3 text-[13px] text-[#5C4A17]">
+                      Estas horas sí están disponibles — elige una y continúa:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {alternativas.map((s) => (
+                        <button
+                          key={s.hora}
+                          type="button"
+                          onClick={() => elegirAlternativa(s.hora)}
+                          className="cursor-pointer rounded-[6px] border border-ink/25 bg-white px-4 py-2 text-[13.5px] font-medium tabular-nums text-ink transition-colors hover:bg-ink hover:text-white"
+                        >
+                          {s.hora}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-0.5 text-[13px] text-[#5C4A17]">
+                    Ese día lo tenemos completo. Prueba con otra fecha
+                    {telefono ? ` o llámanos al ${telefono}` : ""}.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={continuar}
+              disabled={!hora || comprobando || cargando}
+              className="mt-6 flex w-full cursor-pointer items-center justify-center gap-2 rounded-[6px] bg-ink px-5 py-3.5 text-[12.5px] font-semibold tracking-[0.12em] text-white uppercase transition-colors hover:bg-black disabled:cursor-default disabled:opacity-30"
+            >
+              {comprobando ? "Comprobando…" : "Continuar"}
+              {!comprobando && <ChevronRight className="size-4" />}
+            </button>
+
+            {telefono && (
+              <p className="mt-3 text-center text-[12px] text-ink-soft">
+                Para grupos de más de 20 personas, llámanos al{" "}
+                <a href={`tel:${telefono.replace(/\s/g, "")}`} className="font-medium text-ink underline-offset-4 hover:underline">
+                  {telefono}
+                </a>
+                .
+              </p>
+            )}
+          </div>
+        </div>
       ) : (
         <>
           <h2 className="mb-2 font-[Georgia,'Times_New_Roman',serif] text-[22px] font-normal tracking-tight text-ink">
