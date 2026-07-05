@@ -2652,8 +2652,12 @@ export async function getPersonalMes(mes: string): Promise<PersonalMes> {
             importe: schema.personalGastos.importe,
             tipo: schema.personalGastos.tipo,
             trabajadorId: schema.personalGastos.trabajadorId,
+            liquido: schema.personalGastos.liquido,
+            irpf: schema.personalGastos.irpf,
+            ssTrabajador: schema.personalGastos.ssTrabajador,
+            ssEmpresa: schema.personalGastos.ssEmpresa,
+            cashB: schema.personalGastos.cashB,
             documentoNombre: schema.personalGastos.documentoNombre,
-            // Solo si hay documento, sin traer el base64:
             tieneDoc: sql<boolean>`${schema.personalGastos.documento} is not null`,
             trabajadorNombre: schema.personalTrabajadores.nombre,
           })
@@ -2671,6 +2675,11 @@ export async function getPersonalMes(mes: string): Promise<PersonalMes> {
           tipo: f.tipo,
           trabajadorId: f.trabajadorId,
           trabajadorNombre: f.trabajadorNombre,
+          liquido: f.liquido !== null ? Number(f.liquido) : null,
+          irpf: f.irpf !== null ? Number(f.irpf) : null,
+          ssTrabajador: f.ssTrabajador !== null ? Number(f.ssTrabajador) : null,
+          ssEmpresa: f.ssEmpresa !== null ? Number(f.ssEmpresa) : null,
+          cashB: f.cashB !== null ? Number(f.cashB) : null,
           tieneDocumento: Boolean(f.tieneDoc),
           documentoNombre: f.documentoNombre,
         }));

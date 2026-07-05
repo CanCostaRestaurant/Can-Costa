@@ -7,6 +7,7 @@ import { Chip, PageHead } from "@/components/ui";
 import { MonthPicker } from "@/components/date-picker";
 import { type GastoPersonal, type PersonalMes, type Trabajador } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
+import { TablaDesglosePersonal } from "./tabla-desglose";
 import {
   actualizarTrabajador,
   agregarNomina,
@@ -249,6 +250,9 @@ export function PersonalClient({ datos, trabajadores }: { datos: PersonalMes; tr
           <Plantilla trabajadores={trabajadores} ocupado={ocupado} onEjecutar={ejecutar} />
         </div>
       </div>
+
+      {/* Tabla estilo JOMA: todos los trabajadores activos con su desglose de nómina del mes */}
+      <TablaDesglosePersonal mes={datos.mes} trabajadores={trabajadores} gastos={datos.gastos} />
     </section>
   );
 }
