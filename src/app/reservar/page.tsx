@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Clock3, MapPin, Phone } from "lucide-react";
 import { cargarMandos } from "@/lib/reservas/mandos-db";
 import { ReservarWidget } from "./reservar-widget";
 
@@ -71,53 +70,71 @@ export default async function ReservarPage() {
   };
 
   return (
-    <main className="relative min-h-svh overflow-hidden bg-[#171310]">
+    <main className="relative min-h-svh overflow-hidden bg-[#14110E]">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       {/* Fondo: foto a sangre con velo oscuro (si la foto no carga, queda el fondo liso) */}
       <div className="absolute inset-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={FOTO_PORTADA} alt="" aria-hidden className="h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/40 to-black/65" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70" />
       </div>
 
-      <div className="relative z-10 mx-auto flex min-h-svh w-full max-w-6xl items-center px-4 py-8 md:py-12">
-        <div className="anim-in grid w-full items-stretch gap-4 lg:grid-cols-[400px_minmax(0,1fr)]">
-          {/* ── Tarjeta del restaurante ── */}
-          <aside className="flex flex-col rounded-[26px] bg-paper/95 p-7 shadow-2xl backdrop-blur-sm max-lg:order-2 md:p-8">
-            <div className="grid size-16 place-items-center rounded-[18px] bg-brand font-display text-[26px] font-extrabold text-white shadow-(--shadow-lift)">
-              {r.nombre.slice(0, 1)}
-            </div>
-            <h1 className="mt-5 font-display text-[30px] font-extrabold tracking-tight">{r.nombre}</h1>
-
-            <div className="mt-4 flex flex-col gap-2.5 rounded-2xl bg-card p-4 shadow-(--shadow-card)">
-              {r.direccion && (
-                <a
-                  href={mapsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-start gap-2.5 text-[13.5px] font-medium text-ink underline-offset-2 hover:text-brand hover:underline"
-                >
-                  <MapPin className="mt-0.5 size-4 shrink-0 text-brand" />
-                  {r.direccion}
-                </a>
-              )}
-              {r.telefono && (
-                <a
-                  href={`tel:${r.telefono.replace(/\s/g, "")}`}
-                  className="flex items-center gap-2.5 text-[13.5px] font-medium text-ink hover:text-brand"
-                >
-                  <Phone className="size-4 shrink-0 text-brand" />
-                  {r.telefono}
-                </a>
-              )}
-              <span className="flex items-center gap-2.5 text-[13.5px] text-ink-soft">
-                <Clock3 className="size-4 shrink-0 text-brand" />
-                Las reservas tienen una duración aproximada de {textoDuracion(mandos.doblaje.hasta4)}.
+      <div className="relative z-10 mx-auto flex min-h-svh w-full max-w-6xl items-center px-4 py-8 md:py-14">
+        <div className="anim-in grid w-full items-stretch gap-3.5 lg:grid-cols-[390px_minmax(0,1fr)]">
+          {/* ── Tarjeta del restaurante: sobria, editorial ── */}
+          <aside className="flex flex-col rounded-[10px] bg-white/[.97] p-8 shadow-xl backdrop-blur-sm max-lg:order-2 md:p-10">
+            {/* Monograma con borde fino, sin color de marca */}
+            <div className="grid size-14 place-items-center border border-ink/25">
+              <span className="font-[Georgia,'Times_New_Roman',serif] text-[26px] leading-none text-ink">
+                {r.nombre.slice(0, 1)}
               </span>
             </div>
 
-            <p className="mt-auto pt-6 text-[12px] text-ink-soft">
+            <h1 className="mt-6 font-[Georgia,'Times_New_Roman',serif] text-[32px] leading-tight font-normal tracking-tight text-ink">
+              {r.nombre}
+            </h1>
+            <div className="mt-3 h-px w-10 bg-ink/30" />
+
+            <dl className="mt-6 flex flex-col text-[13.5px] leading-relaxed">
+              {r.direccion && (
+                <div className="border-b border-ink/10 py-3 first:pt-0">
+                  <dt className="text-[10.5px] font-semibold tracking-[0.14em] text-ink-soft uppercase">
+                    Dirección
+                  </dt>
+                  <dd className="mt-0.5">
+                    <a
+                      href={mapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-ink underline-offset-4 hover:underline"
+                    >
+                      {r.direccion}
+                    </a>
+                  </dd>
+                </div>
+              )}
+              {r.telefono && (
+                <div className="border-b border-ink/10 py-3">
+                  <dt className="text-[10.5px] font-semibold tracking-[0.14em] text-ink-soft uppercase">
+                    Teléfono
+                  </dt>
+                  <dd className="mt-0.5">
+                    <a href={`tel:${r.telefono.replace(/\s/g, "")}`} className="text-ink underline-offset-4 hover:underline">
+                      {r.telefono}
+                    </a>
+                  </dd>
+                </div>
+              )}
+              <div className="py-3">
+                <dt className="text-[10.5px] font-semibold tracking-[0.14em] text-ink-soft uppercase">
+                  Duración de la reserva
+                </dt>
+                <dd className="mt-0.5 text-ink">{textoDuracion(mandos.doblaje.hasta4)} aprox.</dd>
+              </div>
+            </dl>
+
+            <p className="mt-auto pt-8 text-[12px] text-ink-soft">
               Reserva sin comisiones, directamente con {r.nombre}.
             </p>
           </aside>
