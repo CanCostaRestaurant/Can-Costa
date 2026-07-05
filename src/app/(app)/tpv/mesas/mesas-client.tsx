@@ -86,6 +86,9 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
       <h3 className="mb-2 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
         Plano del local — arrastra cada mesa a su sitio real
       </h3>
+      {/* container-type: las mesas van en cqw (% del ancho del LIENZO, no de
+          la ventana) — sin esto el editor las pintaba más grandes que el TPV
+          y el plano montado aquí no coincidía con el de sala. */}
       <div
         ref={lienzo}
         onPointerMove={(e) => {
@@ -100,7 +103,7 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
           setArrastrando(null);
           if (pos) ejecutar(() => moverMesa(id, pos.x, pos.y));
         }}
-        className="card relative mb-3 w-full touch-none overflow-hidden select-none"
+        className="card relative mb-3 w-full touch-none overflow-hidden select-none [container-type:inline-size]"
         style={{
           aspectRatio: "16/9",
           backgroundImage: "radial-gradient(circle, #E8E1D4 1.2px, transparent 1.2px)",
@@ -118,16 +121,16 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
               }}
               style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
               className={cn(
-                "absolute flex -translate-x-1/2 -translate-y-1/2 cursor-grab flex-col items-center justify-center border-2 bg-card p-1 text-center transition-shadow",
+                "absolute flex -translate-x-1/2 -translate-y-1/2 cursor-grab flex-col items-center justify-center overflow-hidden border-2 bg-card p-[0.4cqw] text-center leading-tight transition-shadow",
                 clasesMesaPlano(mesa),
                 arrastrando === mesa.id
                   ? "z-10 cursor-grabbing border-brand shadow-(--shadow-lift)"
                   : "border-[#C9BFAC]",
               )}
             >
-              <b className="font-display text-[13px] leading-tight font-bold">{mesa.nombre}</b>
-              <span className="flex items-center gap-0.5 text-[10.5px] text-ink-soft">
-                <Users className="size-3" /> {mesa.capacidad}
+              <b className="font-display text-[clamp(8px,1.3cqw,13px)] font-bold">{mesa.nombre}</b>
+              <span className="flex items-center gap-0.5 text-[clamp(7px,1.05cqw,10.5px)] text-ink-soft">
+                <Users className="size-[clamp(7px,1.1cqw,12px)]" /> {mesa.capacidad}
               </span>
             </div>
           );
