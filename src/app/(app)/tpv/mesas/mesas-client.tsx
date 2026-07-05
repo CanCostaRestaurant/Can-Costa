@@ -2,10 +2,57 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Users } from "lucide-react";
+import { Plus, Users, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { clasesMesaPlano } from "../mapa-client";
+import { clasesMesaPlano, dimsMesaPlano, estiloMesaPlano } from "../mapa-client";
 import { actualizarMesa, crearMesa, moverMesa } from "../actions";
+
+// ── Detección de solapes (en píxeles: isótropo, más fácil que mezclar %) ──
+type RectPx = { cx: number; cy: number; w: number; h: number };
+const GAP_PX = 6; // separación mínima entre mesas
+
+// Rectángulo en px de una mesa colocada en (x,y) en % dentro de un lienzo WxH.
+// dimsMesaPlano da w/h en % del ANCHO, así que ambos se multiplican por W.
+function rectPx(mesa: { capacidad: number; forma: string }, x: number, y: number, W: number, H: number): RectPx {
+  const d = dimsMesaPlano(mesa);
+  return { cx: (x / 100) * W, cy: (y / 100) * H, w: (d.w / 100) * W, h: (d.h / 100) * W };
+}
+
+function solapan(a: RectPx, b: RectPx): boolean {
+  return Math.abs(a.cx - b.cx) < (a.w + b.w) / 2 + GAP_PX && Math.abs(a.cy - b.cy) < (a.h + b.h) / 2 + GAP_PX;
+}
+
+// Posición (en %) más cercana a (x,y) donde la mesa NO solapa a ninguna otra
+// y cabe entera dentro del lienzo. Búsqueda en anillos concéntricos.
+function resolverPos(
+  mesa: { capacidad: number; forma: string },
+  x: number,
+  y: number,
+  otras: RectPx[],
+  W: number,
+  H: number,
+): { x: number; y: number } {
+  const d = dimsMesaPlano(mesa);
+  const wpx = (d.w / 100) * W;
+  const hpx = (d.h / 100) * W;
+  const clampX = (cx: number) => Math.min(W - wpx / 2, Math.max(wpx / 2, cx));
+  const clampY = (cy: number) => Math.min(H - hpx / 2, Math.max(hpx / 2, cy));
+  const cabe = (cx: number, cy: number) => otras.every((o) => !solapan({ cx, cy, w: wpx, h: hpx }, o));
+
+  const cx0 = clampX((x / 100) * W);
+  const cy0 = clampY((y / 100) * H);
+  if (cabe(cx0, cy0)) return { x: (cx0 / W) * 100, y: (cy0 / H) * 100 };
+
+  for (let r = 1; r <= 90; r++) {
+    for (let a = 0; a < 360; a += 12) {
+      const rad = (a * Math.PI) / 180;
+      const cx = clampX(cx0 + r * 8 * Math.cos(rad));
+      const cy = clampY(cy0 + r * 8 * Math.sin(rad));
+      if (cabe(cx, cy)) return { x: (cx / W) * 100, y: (cy / H) * 100 };
+    }
+  }
+  return { x: (cx0 / W) * 100, y: (cy0 / H) * 100 };
+}
 
 export type MesaFila = {
   id: string;
@@ -47,10 +94,47 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
     ),
   );
   const [arrastrando, setArrastrando] = useState<string | null>(null);
+  const [solapando, setSolapando] = useState(false); // la mesa que arrastro pisa a otra
 
   const activas = mesas.filter((m) => m.activo);
   const colocadas = activas.filter((m) => posiciones[m.id]);
   const sinColocar = activas.filter((m) => !posiciones[m.id]);
+
+  // Rectángulos (px) de las mesas colocadas, excluyendo una (la que se mueve).
+  function otrosRect(excluir: string, W: number, H: number): RectPx[] {
+    return colocadas
+      .filter((m) => m.id !== excluir && posiciones[m.id])
+      .map((m) => rectPx(m, posiciones[m.id].x, posiciones[m.id].y, W, H));
+  }
+
+  // Separa las mesas que hayan quedado solapadas, respetando al máximo dónde
+  // están (recoloca solo las que chocan, de arriba a abajo).
+  function ordenar() {
+    const rect = lienzo.current?.getBoundingClientRect();
+    if (!rect || colocadas.length === 0) return;
+    const { width: W, height: H } = rect;
+    const orden = [...colocadas].sort(
+      (a, b) => posiciones[a.id].y - posiciones[b.id].y || posiciones[a.id].x - posiciones[b.id].x,
+    );
+    const fijadas: RectPx[] = [];
+    const nuevas: Record<string, { x: number; y: number }> = {};
+    for (const m of orden) {
+      const p = posiciones[m.id];
+      const fin = resolverPos(m, p.x, p.y, fijadas, W, H);
+      nuevas[m.id] = fin;
+      fijadas.push(rectPx(m, fin.x, fin.y, W, H));
+    }
+    const cambiadas = orden.filter(
+      (m) => Math.abs(posiciones[m.id].x - nuevas[m.id].x) > 0.1 || Math.abs(posiciones[m.id].y - nuevas[m.id].y) > 0.1,
+    );
+    setPosiciones((prev) => ({ ...prev, ...nuevas }));
+    if (cambiadas.length === 0) return;
+    setError(null);
+    startAccion(async () => {
+      for (const m of cambiadas) await moverMesa(m.id, nuevas[m.id].x, nuevas[m.id].y);
+      router.refresh();
+    });
+  }
 
   function ejecutar(fn: () => Promise<{ ok: boolean; error?: string }>, alTerminar?: () => void) {
     setError(null);
@@ -83,9 +167,21 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
       )}
 
       {/* ── Plano del local (arrastra cada mesa a su sitio) ── */}
-      <h3 className="mb-2 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
-        Plano del local — arrastra cada mesa a su sitio real
-      </h3>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h3 className="text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
+          Plano del local — arrastra cada mesa a su sitio real
+        </h3>
+        {colocadas.length > 1 && (
+          <button
+            onClick={ordenar}
+            disabled={ocupado}
+            title="Separa las mesas que hayan quedado una encima de otra"
+            className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1.5 text-[12.5px] font-semibold transition-colors hover:border-brand disabled:opacity-40"
+          >
+            <Wand2 className="size-3.5 text-ink-soft" /> Separar solapadas
+          </button>
+        )}
+      </div>
       {/* container-type: las mesas van en cqw (% del ancho del LIENZO, no de
           la ventana) — sin esto el editor las pintaba más grandes que el TPV
           y el plano montado aquí no coincidía con el de sala. */}
@@ -94,14 +190,30 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
         onPointerMove={(e) => {
           if (!arrastrando) return;
           const pos = posDesdeEvento(e);
-          if (pos) setPosiciones((prev) => ({ ...prev, [arrastrando]: pos }));
+          if (!pos) return;
+          setPosiciones((prev) => ({ ...prev, [arrastrando]: pos }));
+          // Aviso visual: se pinta en rojo si pisaría a otra mesa.
+          const rect = lienzo.current?.getBoundingClientRect();
+          const mesa = activas.find((m) => m.id === arrastrando);
+          if (rect && mesa) {
+            const yo = rectPx(mesa, pos.x, pos.y, rect.width, rect.height);
+            setSolapando(otrosRect(arrastrando, rect.width, rect.height).some((o) => solapan(yo, o)));
+          }
         }}
         onPointerUp={() => {
           if (!arrastrando) return;
-          const pos = posiciones[arrastrando];
           const id = arrastrando;
+          const pos = posiciones[id];
           setArrastrando(null);
-          if (pos) ejecutar(() => moverMesa(id, pos.x, pos.y));
+          setSolapando(false);
+          if (!pos) return;
+          // Al soltar, la mesa se aparta sola al hueco libre más cercano.
+          const rect = lienzo.current?.getBoundingClientRect();
+          const mesa = activas.find((m) => m.id === id);
+          const fin =
+            rect && mesa ? resolverPos(mesa, pos.x, pos.y, otrosRect(id, rect.width, rect.height), rect.width, rect.height) : pos;
+          setPosiciones((prev) => ({ ...prev, [id]: fin }));
+          ejecutar(() => moverMesa(id, fin.x, fin.y));
         }}
         className="card relative mb-3 w-full touch-none overflow-hidden select-none [container-type:inline-size]"
         style={{
@@ -119,12 +231,14 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
                 (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
                 setArrastrando(mesa.id);
               }}
-              style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+              style={{ left: `${pos.x}%`, top: `${pos.y}%`, ...estiloMesaPlano(mesa) }}
               className={cn(
                 "absolute flex -translate-x-1/2 -translate-y-1/2 cursor-grab flex-col items-center justify-center overflow-hidden border-2 bg-card p-[0.4cqw] text-center leading-tight transition-shadow",
                 clasesMesaPlano(mesa),
                 arrastrando === mesa.id
-                  ? "z-10 cursor-grabbing border-brand shadow-(--shadow-lift)"
+                  ? solapando
+                    ? "z-10 cursor-grabbing border-bad bg-bad-soft shadow-(--shadow-lift)"
+                    : "z-10 cursor-grabbing border-brand shadow-(--shadow-lift)"
                   : "border-[#C9BFAC]",
               )}
             >
@@ -147,7 +261,15 @@ export function MesasClient({ mesas }: { mesas: MesaFila[] }) {
           {sinColocar.map((m) => (
             <button
               key={m.id}
-              onClick={() => ejecutar(() => moverMesa(m.id, 50, 50))}
+              onClick={() => {
+                // La coloca en un hueco libre (evita caer encima de otra).
+                const rect = lienzo.current?.getBoundingClientRect();
+                const fin = rect
+                  ? resolverPos(m, 50, 50, otrosRect(m.id, rect.width, rect.height), rect.width, rect.height)
+                  : { x: 50, y: 50 };
+                setPosiciones((prev) => ({ ...prev, [m.id]: fin }));
+                ejecutar(() => moverMesa(m.id, fin.x, fin.y));
+              }}
               className="cursor-pointer rounded-full border border-line bg-card px-3 py-1 font-semibold transition-colors hover:border-brand"
             >
               {m.nombre} → al plano

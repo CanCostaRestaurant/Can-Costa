@@ -14,24 +14,29 @@ function tiempo(minutos: number): string {
   return `${Math.floor(minutos / 60)}h ${String(minutos % 60).padStart(2, "0")}m`;
 }
 
-// Tamaño y forma de cada mesa en el plano. El tamaño va en unidades de
-// contenedor (cqw = 1% del ancho del plano): así la mesa SIEMPRE ocupa el
-// mismo % que su posición (también en %), y no se solapa en ninguna pantalla
-// —móvil, tablet o escritorio escalan igual. Calibrado para cuadrar con el
-// tamaño clásico a ~1040px de ancho.
-export function clasesMesaPlano(mesa: { capacidad: number; forma: string }): string {
-  const tam =
-    mesa.forma === "alargada"
-      ? mesa.capacidad >= 4
-        ? "w-[12cqw] h-[6cqw]"
-        : "w-[10.5cqw] h-[5.3cqw]"
-      : mesa.capacidad <= 2
-        ? "w-[6.5cqw] h-[6.5cqw]"
-        : mesa.capacidad <= 4
-          ? "w-[8cqw] h-[8cqw]"
-          : "w-[9.5cqw] h-[9.5cqw]";
-  const forma = mesa.forma === "redonda" ? "rounded-full" : "rounded-[1.4cqw]";
-  return `${tam} ${forma}`;
+// Tamaño de cada mesa en el plano, en cqw (1cqw = 1% del ANCHO del lienzo):
+// así la mesa ocupa siempre el mismo % que su posición y escala igual en
+// cualquier pantalla. `w`/`h` son ambos % del ancho (el lienzo es 16:9), que
+// es justo lo que necesita la detección de solapes del editor. ÚNICA fuente
+// del tamaño: la usan el render del TPV, el del editor y el cálculo de choques.
+export function dimsMesaPlano(mesa: { capacidad: number; forma: string }): { w: number; h: number } {
+  if (mesa.forma === "alargada") {
+    const w = mesa.capacidad >= 4 ? 12 : 10.5;
+    return { w, h: w / 2 };
+  }
+  const w = mesa.capacidad <= 2 ? 6.5 : mesa.capacidad <= 4 ? 8 : 9.5;
+  return { w, h: w };
+}
+
+// Estilo inline con el tamaño (en cqw) para pintar la mesa.
+export function estiloMesaPlano(mesa: { capacidad: number; forma: string }): React.CSSProperties {
+  const { w, h } = dimsMesaPlano(mesa);
+  return { width: `${w}cqw`, height: `${h}cqw` };
+}
+
+// Solo el redondeo (el tamaño va por estiloMesaPlano).
+export function clasesMesaPlano(mesa: { forma: string }): string {
+  return mesa.forma === "redonda" ? "rounded-full" : "rounded-[1.4cqw]";
 }
 
 export function MapaClient({ mapa, esTablet = false }: { mapa: MapaMesasTpv; esTablet?: boolean }) {
@@ -151,7 +156,7 @@ export function MapaClient({ mapa, esTablet = false }: { mapa: MapaMesasTpv; esT
                 onClick={() => abrir(mesa)}
                 disabled={abriendo}
                 title={`${mesa.nombre} · ${mesa.capacidad} plazas`}
-                style={{ left: `${mesa.posX}%`, top: `${mesa.posY}%` }}
+                style={{ left: `${mesa.posX}%`, top: `${mesa.posY}%`, ...estiloMesaPlano(mesa) }}
                 className={cn(
                   "absolute flex -translate-x-1/2 -translate-y-1/2 cursor-pointer flex-col items-center justify-center overflow-hidden border-2 p-[0.4cqw] text-center leading-tight transition-all hover:scale-105",
                   clasesMesaPlano(mesa),
