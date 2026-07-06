@@ -16,7 +16,12 @@ import {
   MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { disponibilidadPublica, reservarPublica, type ResultadoReservaWeb } from "./actions";
+import {
+  disponibilidadPublica,
+  proximasFechasLibres,
+  reservarPublica,
+  type ResultadoReservaWeb,
+} from "./actions";
 import type { SlotDisponibilidad } from "@/lib/reservas/disponibilidad";
 
 const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
@@ -42,6 +47,8 @@ const aMin = (h: string) => {
   const [H, M] = h.split(":").map(Number);
   return H * 60 + M;
 };
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const estaLibre = (s: SlotDisponibilidad) => s.estado === "libre" || s.estado === "pocas";
 
@@ -154,9 +161,11 @@ export function ReservarWidget({
   const [slots, setSlots] = useState<SlotDisponibilidad[] | null>(null);
   const [cargando, setCargando] = useState(false);
 
-  // Aviso de hora completa + alternativas libres más cercanas.
+  // Aviso de hora completa + alternativas libres más cercanas (mismo día) y,
+  // si el día entero está lleno, próximas fechas con hueco.
   const [horaOcupada, setHoraOcupada] = useState<string | null>(null);
   const [alternativas, setAlternativas] = useState<SlotDisponibilidad[] | null>(null);
+  const [otrasFechas, setOtrasFechas] = useState<{ fecha: string; hora: string }[] | null>(null);
   const [comprobando, startComprobar] = useTransition();
 
   const [nombre, setNombre] = useState("");
@@ -170,13 +179,12 @@ export function ReservarWidget({
   const [hecho, setHecho] = useState<ResultadoReservaWeb | null>(null);
 
   // La parrilla de horas del día (turnos). Se pinta SIN estados de ocupación:
-  // todas elegibles; la comprobación real llega al pulsar Continuar.
+  // todas elegibles; la comprobación real llega al pulsar Continuar. Este efecto
+  // SOLO recarga slots — no toca la selección, para poder saltar a otra fecha
+  // (cross-selling) llevándonos la hora ya elegida.
   useEffect(() => {
     let vivo = true;
     setCargando(true);
-    setHora(null);
-    setHoraOcupada(null);
-    setAlternativas(null);
     disponibilidadPublica(fecha, pax)
       .then((res) => vivo && setSlots(res.ok ? (res.slots ?? []) : []))
       .finally(() => vivo && setCargando(false));
@@ -184,6 +192,14 @@ export function ReservarWidget({
       vivo = false;
     };
   }, [fecha, pax]);
+
+  // Cambiar fecha o grupo A MANO invalida la selección y los avisos.
+  function limpiarSeleccion() {
+    setHora(null);
+    setHoraOcupada(null);
+    setAlternativas(null);
+    setOtrasFechas(null);
+  }
 
   const servicios = useMemo(() => [...new Set((slots ?? []).map((s) => s.servicio))], [slots]);
   const slotElegido = (slots ?? []).find((s) => s.hora === hora);
@@ -218,13 +234,33 @@ export function ReservarWidget({
         .sort((a, b) => aMin(a.hora) - aMin(b.hora));
       setHoraOcupada(hora);
       setAlternativas(cercanas);
+      // Día entero sin hueco → ofrecer las próximas fechas libres (no perder
+      // la reserva). otrasFechas = null mientras busca (muestra "Buscando…").
+      if (cercanas.length === 0) {
+        setOtrasFechas(null);
+        const otras = await proximasFechasLibres(fecha, pax);
+        setOtrasFechas(otras.ok ? (otras.fechas ?? []) : []);
+      }
     });
   }
 
+  // Alternativa del MISMO día: solo cambia la hora.
   function elegirAlternativa(h: string) {
     setHora(h);
     setHoraOcupada(null);
     setAlternativas(null);
+    setOtrasFechas(null);
+    setPaso("cliente");
+  }
+
+  // Alternativa de OTRO día: cambia fecha + hora y salta a datos. El efecto
+  // recargará los slots de esa fecha, pero ya no borra la hora (ver arriba).
+  function elegirOtraFecha(f: string, h: string) {
+    setFecha(f);
+    setHora(h);
+    setHoraOcupada(null);
+    setAlternativas(null);
+    setOtrasFechas(null);
     setPaso("cliente");
   }
 
@@ -348,7 +384,13 @@ export function ReservarWidget({
           {/* Calendario mensual */}
           <div className="md:border-r md:border-ink/10 md:pr-8">
             <div className={cn(CLASE_ETIQUETA, "mb-3")}>Fecha</div>
-            <Calendario fecha={fecha} onFecha={setFecha} />
+            <Calendario
+              fecha={fecha}
+              onFecha={(v) => {
+                setFecha(v);
+                limpiarSeleccion();
+              }}
+            />
           </div>
 
           {/* Personas + horas */}
@@ -357,7 +399,10 @@ export function ReservarWidget({
               <span className={cn(CLASE_ETIQUETA, "mb-1.5 block")}>Comensales</span>
               <select
                 value={pax}
-                onChange={(e) => setPax(Number(e.target.value))}
+                onChange={(e) => {
+                  setPax(Number(e.target.value));
+                  limpiarSeleccion();
+                }}
                 className={cn(CLASE_CONTROL, "cursor-pointer")}
               >
                 {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
@@ -402,6 +447,7 @@ export function ReservarWidget({
                             setHora(s.hora);
                             setHoraOcupada(null);
                             setAlternativas(null);
+                            setOtrasFechas(null);
                           }}
                           className={cn(
                             "cursor-pointer rounded-[6px] border py-2.5 text-[13.5px] font-medium tabular-nums transition-colors",
@@ -442,10 +488,31 @@ export function ReservarWidget({
                       ))}
                     </div>
                   </>
+                ) : otrasFechas === null ? (
+                  <p className="mt-1 text-[13px] text-[#5C4A17]">Buscando huecos en los próximos días…</p>
+                ) : otrasFechas.length > 0 ? (
+                  <>
+                    <p className="mt-0.5 mb-3 text-[13px] text-[#5C4A17]">
+                      Ese día está completo, pero tenemos mesa estos días — elige y continúa:
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {otrasFechas.map((o) => (
+                        <button
+                          key={o.fecha}
+                          type="button"
+                          onClick={() => elegirOtraFecha(o.fecha, o.hora)}
+                          className="flex cursor-pointer items-center justify-between gap-3 rounded-[6px] border border-ink/25 bg-white px-4 py-2.5 text-[13.5px] font-medium text-ink transition-colors hover:bg-ink hover:text-white"
+                        >
+                          <span>{cap(fechaLarga(o.fecha))}</span>
+                          <span className="tabular-nums opacity-80">desde las {o.hora}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <p className="mt-0.5 text-[13px] text-[#5C4A17]">
-                    Ese día lo tenemos completo. Prueba con otra fecha
-                    {telefono ? ` o llámanos al ${telefono}` : ""}.
+                    No encontramos hueco próximo para {pax} {pax === 1 ? "persona" : "personas"}.
+                    {telefono ? ` Llámanos al ${telefono} y lo miramos contigo.` : ""}
                   </p>
                 )}
               </div>

@@ -5,7 +5,7 @@
 // mesa y confirmación por email/SMS. Las reservas entran con origen='web' y se
 // vinculan al cliente. Validación estricta porque esto está expuesto a
 // internet (honeypot + límites de tamaño + turnos y disponibilidad reales).
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lte } from "drizzle-orm";
 import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
 import { cargarMandos } from "@/lib/reservas/mandos-db";
 import { duracionPorComensales } from "@/lib/reservas/config";
@@ -84,6 +84,91 @@ export async function disponibilidadPublica(
     console.error("[reservar] disponibilidadPublica falló:", e instanceof Error ? e.message : e);
     resetDb();
     return { ok: false, error: "No se pudo cargar la disponibilidad. Inténtalo de nuevo." };
+  }
+}
+
+// Cuando el día pedido está COMPLETO: busca las próximas fechas con al menos
+// un hueco para ese grupo, para no perder la reserva (cross-selling de días).
+// Devuelve hasta `max` fechas con su hora libre más temprana. Es puro cálculo
+// en memoria tras UNA sola consulta al rango, así que explorar ~3 semanas sale
+// barato.
+export async function proximasFechasLibres(
+  desde: string,
+  comensales: number,
+  max = 3,
+): Promise<{ ok: boolean; fechas?: { fecha: string; hora: string }[]; error?: string }> {
+  const db = getDb();
+  if (!db) return { ok: false, error: "no disponible" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) return { ok: false, error: "Fecha no válida" };
+  const pax = Math.round(comensales);
+  if (!Number.isFinite(pax) || pax < 1 || pax > 20) return { ok: false, error: "Grupo no válido" };
+
+  const VENTANA = 21; // días a explorar tras la fecha llena
+  const base = new Date(`${desde}T00:00:00`);
+  const dias = Array.from({ length: VENTANA }, (_, i) => {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i + 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+
+  try {
+    const mandos = await cargarMandos();
+    const [mesas, reservasRango] = await Promise.all([
+      mesasAsignables(db),
+      conPlazo(
+        db
+          .select({
+            fecha: schema.reservas.fecha,
+            hora: schema.reservas.hora,
+            comensales: schema.reservas.comensales,
+            duracionMin: schema.reservas.duracionMin,
+            mesaId: schema.reservas.mesaId,
+            mesa2Id: schema.reservas.mesa2Id,
+          })
+          .from(schema.reservas)
+          .where(
+            and(
+              gte(schema.reservas.fecha, dias[0]),
+              lte(schema.reservas.fecha, dias[dias.length - 1]),
+              inArray(schema.reservas.estado, ["confirmada", "sentada"]),
+            ),
+          ),
+      ),
+    ]);
+
+    // Bucketea las reservas por día → ocupaciones (mesas) + entradas (cupo).
+    const porDia = new Map<string, { ocupaciones: Ocupacion[]; entradas: { inicioMin: number; comensales: number }[] }>();
+    for (const r of reservasRango) {
+      let b = porDia.get(r.fecha);
+      if (!b) {
+        b = { ocupaciones: [], entradas: [] };
+        porDia.set(r.fecha, b);
+      }
+      const inicio = horaAMinutos(r.hora);
+      b.entradas.push({ inicioMin: inicio, comensales: r.comensales });
+      if (r.mesaId) {
+        const fin = inicio + r.duracionMin;
+        b.ocupaciones.push({ mesaId: r.mesaId, inicioMin: inicio, finMin: fin });
+        if (r.mesa2Id) b.ocupaciones.push({ mesaId: r.mesa2Id, inicioMin: inicio, finMin: fin });
+      }
+    }
+
+    const esLibre = (s: SlotDisponibilidad) => s.estado === "libre" || s.estado === "pocas";
+    const fechas: { fecha: string; hora: string }[] = [];
+    for (const dia of dias) {
+      const b = porDia.get(dia) ?? { ocupaciones: [], entradas: [] };
+      const slots = calcularDisponibilidad(pax, mesas, b.ocupaciones, b.entradas, mandos);
+      const primera = slots.find(esLibre); // slots vienen en orden cronológico
+      if (primera) {
+        fechas.push({ fecha: dia, hora: primera.hora });
+        if (fechas.length >= max) break;
+      }
+    }
+    return { ok: true, fechas };
+  } catch (e) {
+    console.error("[reservar] proximasFechasLibres falló:", e instanceof Error ? e.message : e);
+    resetDb();
+    return { ok: false, error: "No se pudo buscar disponibilidad." };
   }
 }
 
