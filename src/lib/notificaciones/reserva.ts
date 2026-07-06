@@ -64,29 +64,51 @@ export async function enviarEmailConfirmacion(
   if (!datos.email?.trim()) return { enviado: false, motivo: "la reserva no tiene email" };
 
   const r = mandos.restaurante;
+  const nombrePila = datos.nombre.split(" ")[0];
+  // Sobrio, sin emojis ni botones de color chillón: menos "newsletter" = menos
+  // probabilidad de spam. Un solo enlace de texto para "cómo llegar".
   const html = `
-  <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;background:#F7F3EC;border-radius:16px;padding:28px">
-    <h2 style="margin:0 0 4px;color:#1c1917">Reserva confirmada ✓</h2>
-    <p style="margin:0 0 20px;color:#57534e">${r.nombre} te espera, ${datos.nombre.split(" ")[0]}.</p>
-    <div style="background:#fff;border-radius:12px;padding:18px 20px;margin-bottom:20px">
-      <p style="margin:0 0 6px"><b>${fechaLarga(datos.fecha)}</b> a las <b>${datos.hora}</b></p>
-      <p style="margin:0 0 6px">Mesa para <b>${datos.comensales}</b>${datos.mesa ? ` · ${datos.mesa}` : ""}</p>
-      <p style="margin:0;color:#57534e;font-size:14px">Dispones de la mesa hasta las ${datos.hastaHora}.</p>
-    </div>
-    <p style="margin:0 0 10px">
-      <a href="${urlMaps(r)}" style="display:inline-block;background:#E8532F;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600">📍 Cómo llegar</a>
-      &nbsp;
-      <a href="${urlCalendar(datos, r)}" style="display:inline-block;background:#1c1917;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600">🗓 Añadir al calendario</a>
+  <div style="font-family:Georgia,'Times New Roman',serif;max-width:520px;margin:0 auto;color:#1c1917">
+    <p style="margin:0 0 4px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#78716c">${r.nombre}</p>
+    <h2 style="margin:0 0 14px;font-weight:normal;font-size:22px">Tu reserva está confirmada</h2>
+    <p style="margin:0 0 18px;font-family:system-ui,sans-serif;color:#57534e">Hola ${nombrePila}, te esperamos.</p>
+    <table style="width:100%;border-collapse:collapse;font-family:system-ui,sans-serif;font-size:14px">
+      <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#78716c">Día</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right"><b>${fechaLarga(datos.fecha)}</b></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#78716c">Hora</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right"><b>${datos.hora}</b> · mesa hasta las ${datos.hastaHora}</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#78716c">Comensales</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right"><b>${datos.comensales}</b>${datos.mesa ? ` · ${datos.mesa}` : ""}</td></tr>
+    </table>
+    <p style="margin:18px 0 0;font-family:system-ui,sans-serif;font-size:14px">
+      ${r.direccion ? `${r.direccion} — <a href="${urlMaps(r)}" style="color:#1c1917">cómo llegar</a>. ` : ""}<a href="${urlCalendar(datos, r)}" style="color:#1c1917">Añadir al calendario</a>.
     </p>
-    <p style="margin:16px 0 0;color:#78716c;font-size:13px">
-      ${r.direccion}${r.telefono ? ` · Si no puedes venir, avísanos: ${r.telefono}` : ""}
+    <p style="margin:14px 0 0;font-family:system-ui,sans-serif;font-size:13px;color:#78716c">
+      ${r.telefono ? `Si no puedes venir, avísanos al ${r.telefono}.` : "Si no puedes venir, responde a este correo y lo anulamos."}
     </p>
   </div>`;
 
+  // Versión en texto plano (multipart): Gmail penaliza el HTML a secas.
+  const texto = [
+    `${r.nombre} — Tu reserva está confirmada`,
+    ``,
+    `Hola ${nombrePila}, te esperamos.`,
+    ``,
+    `Día: ${fechaLarga(datos.fecha)}`,
+    `Hora: ${datos.hora} (mesa hasta las ${datos.hastaHora})`,
+    `Comensales: ${datos.comensales}${datos.mesa ? ` · ${datos.mesa}` : ""}`,
+    ``,
+    r.direccion ? `Dirección: ${r.direccion}` : null,
+    `Cómo llegar: ${urlMaps(r)}`,
+    `Añadir al calendario: ${urlCalendar(datos, r)}`,
+    ``,
+    r.telefono ? `Si no puedes venir, avísanos al ${r.telefono}.` : "Si no puedes venir, responde a este correo y lo anulamos.",
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+
   const res = await enviarCorreo({
     para: datos.email.trim(),
-    asunto: `Reserva confirmada en ${r.nombre} — ${fechaLarga(datos.fecha)} ${datos.hora}`,
+    asunto: `Reserva confirmada en ${r.nombre}, ${fechaLarga(datos.fecha)} a las ${datos.hora}`,
     html,
+    texto,
     nombreRemitente: r.nombre,
   });
   return res.enviado ? { enviado: true } : { enviado: false, motivo: res.motivo };

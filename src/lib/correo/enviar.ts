@@ -13,6 +13,8 @@ export async function enviarCorreo(datos: {
   para: string;
   asunto: string;
   html: string;
+  texto?: string; // versión en texto plano (multipart/alternative → menos spam)
+  responderA?: string; // Reply-To (a dónde van las respuestas del cliente)
   nombreRemitente?: string; // "Can Costa SL" — el correo es el del buzón
   adjuntos?: Adjunto[];
 }): Promise<ResultadoCorreo> {
@@ -35,7 +37,9 @@ export async function enviarCorreo(datos: {
     await transporte.sendMail({
       from: datos.nombreRemitente ? `"${datos.nombreRemitente.replaceAll('"', "")}" <${usuario}>` : usuario,
       to: datos.para,
+      replyTo: datos.responderA,
       subject: datos.asunto,
+      text: datos.texto,
       html: datos.html,
       attachments: datos.adjuntos?.map((a) => ({
         filename: a.nombre,
