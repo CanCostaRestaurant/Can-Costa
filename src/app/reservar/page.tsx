@@ -123,6 +123,43 @@ export default async function ReservarPage() {
           Reserva sin comisiones, directamente con {r.nombre} · Duración aproximada de la mesa:{" "}
           {textoDuracion(mandos.doblaje.hasta4)}
         </p>
+
+        {/* ── Encuéntranos: mapa embebido (sin API key) ── */}
+        {r.direccion && (
+          <section className="anim-in mt-14 w-full" style={{ animationDelay: "350ms" }}>
+            <div className="mb-6 text-center text-white">
+              <div className="mx-auto mb-4 flex items-center justify-center gap-4">
+                <span className="h-px w-12 bg-white/40 md:w-20" />
+                <span className="font-[Georgia,'Times_New_Roman',serif] text-[13px] text-white/70">✦</span>
+                <span className="h-px w-12 bg-white/40 md:w-20" />
+              </div>
+              <h2 className="font-[Georgia,'Times_New_Roman',serif] text-[24px] font-normal tracking-[0.18em] uppercase md:text-[28px]">
+                Encuéntranos
+              </h2>
+            </div>
+
+            <div className="overflow-hidden rounded-[10px] border border-white/10 shadow-xl">
+              <iframe
+                src={`https://www.google.com/maps?q=${encodeURIComponent(`${r.nombre} ${r.direccion}`.trim())}&z=16&output=embed`}
+                className="block h-[380px] w-full border-0"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                title={`Mapa de ${r.nombre}`}
+              />
+            </div>
+
+            <p className="mt-5 text-center text-[13px] text-white/75">
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline-offset-4 hover:text-white hover:underline"
+              >
+                {r.direccion}
+              </a>
+            </p>
+          </section>
+        )}
       </div>
     </main>
   );
