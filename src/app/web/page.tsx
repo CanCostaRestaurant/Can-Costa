@@ -26,13 +26,13 @@ const BRONCE = "#A47B4F";
 // botellas, sala llena, paella, comedor con plantas y sobremesa sobre
 // baldosa hidráulica.
 const FOTOS = {
-  hero: "photo-1595295333158-4742f28fbd85",
+  hero: "photo-1534080564583-6be75777b70a", // paella sobre pizarra oscura, cenital: España en alta cocina
   casa: "photo-1482275548304-a58859dc31b7",
   mercado: "photo-1561136594-7f68413baa99",
   brasa: "photo-1529193591184-b1d58069ecdd",
   bodega: "photo-1516594915697-87eb3b1c14ea",
   sala: "photo-1525610553991-2bede1a236e2",
-  detalle: "photo-1534080564583-6be75777b70a",
+  detalle: "photo-1559742811-822873691df8", // llagostins a la brasa en plato negro (está en la carta)
   terraza: "photo-1537047902294-62a40c20a6ae",
   mesa: "photo-1466978913421-dad2ebd01d17",
 };
