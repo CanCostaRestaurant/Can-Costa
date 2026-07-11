@@ -76,6 +76,7 @@ const CARTA: { titulo: string; platos: PlatoCarta[] }[] = [
       { nombre: "Roger a la brasa amb pilpil", pvp: 19.5 },
       { nombre: "Parpatana de tonyina a la brasa", pvp: 24 },
       { nombre: "Llagostí a la brasa", pvp: 22 },
+      { nombre: "Pluma ibèrica a la brasa", pvp: 21.5 },
       { nombre: "Xuleta a la brasa", pvp: 58, nota: "kg" },
     ],
   },
