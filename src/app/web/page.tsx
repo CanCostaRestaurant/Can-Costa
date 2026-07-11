@@ -26,7 +26,7 @@ const BRONCE = "#A47B4F";
 // botellas, sala llena, paella, comedor con plantas y sobremesa sobre
 // baldosa hidráulica.
 const FOTOS = {
-  hero: "photo-1577106263724-2c8e03bfe9cf", // chef emplatando con cuchara en el pase: el gesto de alta cocina (gemela libre de la foto de prensa que gustaba)
+  hero: "photo-1551218808-94e220e084d2", // mano SIN tatuajes aliñando en hilo un plato negro (verdura a la brasa): el gesto de alta cocina de la referencia, en oscuro editorial
   casa: "photo-1482275548304-a58859dc31b7",
   mercado: "photo-1561136594-7f68413baa99",
   brasa: "photo-1529193591184-b1d58069ecdd",
