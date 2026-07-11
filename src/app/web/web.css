@@ -61,6 +61,15 @@
   transform: scaleX(1);
 }
 
+/* Carruseles móviles con snap: se hojean con el pulgar, sin barra visible */
+.sin-scrollbar {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.sin-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Scroll suave para las anclas de la página */
 html {
   scroll-behavior: smooth;

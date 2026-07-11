@@ -21,16 +21,21 @@ const BRONCE = "#A47B4F";
 // de perfil de Google. Placeholders hasta tener reportaje propio: se
 // sustituyen subiendo ficheros a /public y cambiando URLs.
 const FOTOS = {
-  hero: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=2200&q=70",
-  casa: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=1000&q=70",
-  mercado: "https://images.unsplash.com/photo-1488459716781-31db52582fe9?auto=format&fit=crop&w=900&q=70",
-  brasa: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=900&q=70",
-  bodega: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=900&q=70",
-  sala: "https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=1200&q=70",
-  detalle: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=1200&q=70",
-  terraza: "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=70",
-  mesa: "https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?auto=format&fit=crop&w=2200&q=70",
+  hero: "photo-1555939594-58d7cb561ad1",
+  casa: "photo-1556910103-1c02745aae4d",
+  mercado: "photo-1488459716781-31db52582fe9",
+  brasa: "photo-1544025162-d76694265947",
+  bodega: "photo-1510812431401-41d2bd2722f3",
+  sala: "photo-1552566626-52f8b828add9",
+  detalle: "photo-1504754524776-8f4f37790ca0",
+  terraza: "photo-1559339352-11d035aa65de",
+  mesa: "photo-1466978913421-dad2ebd01d17",
 };
+
+// El 90% del tráfico será móvil: cada <img> lleva srcset para que un iPhone
+// en 4G baje ~480-800px en vez de la foto de 2200px de escritorio.
+const foto = (id: string, w: number) => `https://images.unsplash.com/${id}?auto=format&fit=crop&q=70&w=${w}`;
+const fotoSet = (id: string) => [480, 800, 1200, 1800].map((w) => `${foto(id, w)} ${w}w`).join(", ");
 
 // La carta REAL de la casa, en catalán (los precios son provisionales hasta
 // fijar los definitivos). Cuando la carta esté cargada en el CRM con sus PVP
@@ -106,13 +111,21 @@ export default async function WebPage() {
   return (
     <main className="bg-paper text-ink">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <HeaderWeb nombre={r.nombre} />
+      <HeaderWeb nombre={r.nombre} telefono={r.telefono} />
 
       {/* ══ HERO ══ */}
       <section id="inicio" className="relative flex min-h-svh items-center justify-center overflow-hidden bg-[#14110E]">
         <div className="absolute inset-0 overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={FOTOS.hero} alt="" aria-hidden className="kenburns h-full w-full object-cover" />
+          <img
+            src={foto(FOTOS.hero, 1800)}
+            srcSet={fotoSet(FOTOS.hero)}
+            sizes="100vw"
+            fetchPriority="high"
+            alt=""
+            aria-hidden
+            className="kenburns h-full w-full object-cover"
+          />
           <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/45 to-black/70" />
         </div>
 
@@ -123,7 +136,7 @@ export default async function WebPage() {
             </p>
           </Reveal>
           <Reveal delay={150}>
-            <h1 className="f-serif mt-6 text-[clamp(46px,9vw,110px)] leading-[1.05] font-light tracking-[0.14em] uppercase">
+            <h1 className="f-serif mt-6 text-[clamp(36px,11vw,110px)] leading-[1.05] font-light tracking-[0.14em] uppercase">
               {r.nombre}
             </h1>
           </Reveal>
@@ -156,16 +169,24 @@ export default async function WebPage() {
       </section>
 
       {/* ══ LA CASA ══ */}
-      <section id="casa" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-20 md:py-28">
+      <section id="casa" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16 md:py-28">
         <Reveal>
           <Cabecera kicker="La casa" titulo="Cocina de mercado, maneras de fonda" />
         </Reveal>
 
         <div className="mt-12 grid items-center gap-10 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] md:gap-16">
           <Reveal>
-            <div className="relative aspect-[2/3] w-full overflow-hidden">
+            <div className="relative aspect-[4/5] w-full overflow-hidden md:aspect-[2/3]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={FOTOS.casa} alt={`Cocina de ${r.nombre}`} className="h-full w-full object-cover" />
+              <img
+                src={foto(FOTOS.casa, 1000)}
+                srcSet={fotoSet(FOTOS.casa)}
+                sizes="(min-width: 768px) 42vw, 100vw"
+                loading="lazy"
+                decoding="async"
+                alt={`Cocina de ${r.nombre}`}
+                className="h-full w-full object-cover"
+              />
             </div>
           </Reveal>
           <Reveal delay={150}>
@@ -194,8 +215,10 @@ export default async function WebPage() {
       </section>
 
       {/* ══ TRES PILARES ══ */}
-      <section className="mx-auto max-w-6xl px-5 pb-20 md:pb-28">
-        <div className="grid gap-8 md:grid-cols-3">
+      {/* En móvil es un carrusel con snap (se hojea con el pulgar); en
+          escritorio, la retícula de tres columnas de siempre. */}
+      <section className="mx-auto max-w-6xl px-5 pb-16 md:pb-28">
+        <div className="sin-scrollbar -mx-5 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 md:mx-0 md:grid md:grid-cols-3 md:gap-8 md:overflow-visible md:px-0">
           {[
             {
               foto: FOTOS.mercado,
@@ -213,12 +236,16 @@ export default async function WebPage() {
               texto: "Vinos catalanes y mediterráneos de payés, elegidos para la mesa, no para la etiqueta.",
             },
           ].map((p, i) => (
-            <Reveal key={p.titulo} delay={i * 130}>
+            <Reveal key={p.titulo} delay={i * 130} className="w-[76%] shrink-0 snap-start md:w-auto">
               <article className="group">
-                <div className="aspect-[2/3] overflow-hidden">
+                <div className="aspect-[3/4] overflow-hidden md:aspect-[2/3]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={p.foto}
+                    src={foto(p.foto, 900)}
+                    srcSet={fotoSet(p.foto)}
+                    sizes="(min-width: 768px) 31vw, 76vw"
+                    loading="lazy"
+                    decoding="async"
                     alt={p.titulo}
                     className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
                   />
@@ -232,7 +259,7 @@ export default async function WebPage() {
       </section>
 
       {/* ══ LA CARTA (en vivo desde el CRM) ══ */}
-      <section id="carta" className="mx-auto max-w-6xl scroll-mt-24 px-5 pb-20 md:pb-28">
+      <section id="carta" className="mx-auto max-w-6xl scroll-mt-24 px-5 pb-16 md:pb-28">
         <Reveal>
           <Cabecera kicker="La carta" titulo="Lo que da el mercado esta semana" />
         </Reveal>
@@ -299,12 +326,20 @@ export default async function WebPage() {
             </div>
           </Reveal>
 
-          <div className="mt-12 grid gap-4 md:grid-cols-3">
+          <div className="sin-scrollbar -mx-5 mt-10 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 md:mx-0 md:mt-12 md:grid md:grid-cols-3 md:overflow-visible md:px-0">
             {[FOTOS.sala, FOTOS.detalle, FOTOS.terraza].map((f, i) => (
-              <Reveal key={f} delay={i * 130}>
-                <div className="h-[320px] overflow-hidden md:h-[420px]">
+              <Reveal key={f} delay={i * 130} className="w-[82%] shrink-0 snap-start md:w-auto">
+                <div className="h-[300px] overflow-hidden md:h-[420px]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={f} alt="" className="h-full w-full object-cover transition-transform duration-700 hover:scale-[1.04]" />
+                  <img
+                    src={foto(f, 1200)}
+                    srcSet={fotoSet(f)}
+                    sizes="(min-width: 768px) 31vw, 82vw"
+                    loading="lazy"
+                    decoding="async"
+                    alt=""
+                    className="h-full w-full object-cover transition-transform duration-700 hover:scale-[1.04]"
+                  />
                 </div>
               </Reveal>
             ))}
@@ -320,7 +355,7 @@ export default async function WebPage() {
       </section>
 
       {/* ══ EL EQUIPO ══ */}
-      <section id="equipo" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-20 md:py-28">
+      <section id="equipo" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16 md:py-28">
         <Reveal>
           <Cabecera kicker="El equipo" titulo="Dos socios, una casa" />
         </Reveal>
@@ -364,7 +399,7 @@ export default async function WebPage() {
       </section>
 
       {/* ══ CONTACTO / INFORMACIÓN PRÁCTICA ══ */}
-      <section id="contacto" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-20 md:py-28">
+      <section id="contacto" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-16 md:py-28">
         <Reveal>
           <Cabecera kicker="Contacto" titulo="Dónde y cuándo" />
         </Reveal>
@@ -442,10 +477,19 @@ export default async function WebPage() {
       </section>
 
       {/* ══ BANDA FINAL DE RESERVA ══ */}
-      <section className="relative overflow-hidden bg-[#14110E] py-24 text-center text-white md:py-32">
+      <section className="relative overflow-hidden bg-[#14110E] py-20 text-center text-white md:py-32">
         <div className="absolute inset-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={FOTOS.mesa} alt="" aria-hidden className="h-full w-full object-cover" />
+          <img
+            src={foto(FOTOS.mesa, 1800)}
+            srcSet={fotoSet(FOTOS.mesa)}
+            sizes="100vw"
+            loading="lazy"
+            decoding="async"
+            alt=""
+            aria-hidden
+            className="h-full w-full object-cover"
+          />
           <div className="absolute inset-0 bg-black/70" />
         </div>
         <Reveal className="relative z-10 px-5">
