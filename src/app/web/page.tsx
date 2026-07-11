@@ -20,15 +20,20 @@ const BRONCE = "#A47B4F";
 // (fuego, manos, sobremesa — nada de bodegón comercial), estilo fotos reales
 // de perfil de Google. Placeholders hasta tener reportaje propio: se
 // sustituyen subiendo ficheros a /public y cambiando URLs.
+// Set curado A MANO mirando cada foto (estilo IG de bar de barrio: comida
+// sobre la mesa, luz real, gente, cero bodegón): pasta de almejas con vino,
+// contraluz de ventana con grano, tomates de mercado, costillar tostado,
+// botellas, sala llena, paella, comedor con plantas y sobremesa sobre
+// baldosa hidráulica.
 const FOTOS = {
-  hero: "photo-1555939594-58d7cb561ad1",
-  casa: "photo-1556910103-1c02745aae4d",
-  mercado: "photo-1488459716781-31db52582fe9",
-  brasa: "photo-1544025162-d76694265947",
-  bodega: "photo-1510812431401-41d2bd2722f3",
-  sala: "photo-1552566626-52f8b828add9",
-  detalle: "photo-1504754524776-8f4f37790ca0",
-  terraza: "photo-1559339352-11d035aa65de",
+  hero: "photo-1595295333158-4742f28fbd85",
+  casa: "photo-1482275548304-a58859dc31b7",
+  mercado: "photo-1561136594-7f68413baa99",
+  brasa: "photo-1529193591184-b1d58069ecdd",
+  bodega: "photo-1516594915697-87eb3b1c14ea",
+  sala: "photo-1525610553991-2bede1a236e2",
+  detalle: "photo-1534080564583-6be75777b70a",
+  terraza: "photo-1537047902294-62a40c20a6ae",
   mesa: "photo-1466978913421-dad2ebd01d17",
 };
 
