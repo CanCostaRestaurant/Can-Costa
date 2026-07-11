@@ -375,28 +375,41 @@ export default async function WebPage() {
         <div className="mt-12 grid gap-8 md:grid-cols-2">
           {[
             {
-              inicial: "P",
+              // Retratos placeholder (Unsplash) en B/N editorial hasta tener
+              // los reales de Pau y Iou: se cambian por ficheros en /public.
+              foto: "photo-1500648767791-00dcc994a43e",
               nombre: "Pau",
               rol: "Jefe de sala · Socio",
               bio: "La sala es suya: los vinos vivos de la bodega, la memoria de cada mesa y la sobremesa como religión. Si has venido dos veces, ya sabe qué bebes.",
             },
             {
-              inicial: "I",
+              foto: "photo-1577219491135-ce391730fb2c",
               nombre: "Iou",
               rol: "Jefe de cocina · Socio",
               bio: "El fuego es suyo: mercado de mañana, brasa de encina y una carta corta que no necesita discurso. Lo que no está en su punto, no sale al pase.",
             },
           ].map((s, i) => (
             <Reveal key={s.nombre} delay={i * 150}>
-              <article className="flex h-full flex-col border border-ink/20 p-8 transition-colors hover:bg-ink hover:text-paper md:p-10">
-                <span className="f-serif text-[64px] leading-none font-light" style={{ color: BRONCE }}>
-                  {s.inicial}
-                </span>
-                <h3 className="f-serif mt-6 text-[30px] font-light">{s.nombre}</h3>
-                <p className="mt-1 text-[11px] font-bold tracking-[0.26em] uppercase" style={{ color: BRONCE }}>
-                  {s.rol}
-                </p>
-                <p className="mt-5 text-[14.5px] leading-relaxed opacity-80">{s.bio}</p>
+              <article className="group flex h-full flex-col border border-ink/20 transition-colors hover:bg-ink hover:text-paper">
+                <div className="aspect-[4/5] overflow-hidden sm:aspect-[16/11]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={foto(s.foto, 900)}
+                    srcSet={fotoSet(s.foto)}
+                    sizes="(min-width: 768px) 45vw, 100vw"
+                    loading="lazy"
+                    decoding="async"
+                    alt={`${s.nombre}, ${s.rol.toLowerCase()}`}
+                    className="h-full w-full object-cover grayscale transition-transform duration-700 group-hover:scale-[1.03]"
+                  />
+                </div>
+                <div className="p-6 md:p-8">
+                  <h3 className="f-serif text-[30px] font-light">{s.nombre}</h3>
+                  <p className="mt-1 text-[11px] font-bold tracking-[0.26em] uppercase" style={{ color: BRONCE }}>
+                    {s.rol}
+                  </p>
+                  <p className="mt-4 text-[14.5px] leading-relaxed opacity-80">{s.bio}</p>
+                </div>
               </article>
             </Reveal>
           ))}
