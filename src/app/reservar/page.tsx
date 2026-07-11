@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { cargarMandos } from "@/lib/reservas/mandos-db";
 import { ReservarWidget } from "./reservar-widget";
 
@@ -88,8 +89,11 @@ export default async function ReservarPage() {
             <span className="font-[Georgia,'Times_New_Roman',serif] text-[15px] text-white/70">✦</span>
             <span className="h-px w-16 bg-white/40 md:w-24" />
           </div>
+          {/* El wordmark lleva de vuelta a la web principal del restaurante */}
           <h1 className="font-[Georgia,'Times_New_Roman',serif] text-[38px] leading-none font-normal tracking-[0.18em] uppercase md:text-[46px]">
-            {r.nombre}
+            <Link href="/web" className="transition-opacity hover:opacity-80">
+              {r.nombre}
+            </Link>
           </h1>
           <p className="mt-3 text-[11px] font-semibold tracking-[0.3em] text-white/70 uppercase">
             Restaurant · Barcelona

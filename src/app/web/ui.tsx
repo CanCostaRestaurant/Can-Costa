@@ -10,6 +10,7 @@ const ANCLAS = [
   { href: "#casa", etiqueta: "La casa" },
   { href: "#carta", etiqueta: "La carta" },
   { href: "#espacio", etiqueta: "El espacio" },
+  { href: "#equipo", etiqueta: "Equipo" },
   { href: "#contacto", etiqueta: "Contacto" },
 ];
 

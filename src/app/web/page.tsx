@@ -8,8 +8,6 @@
 // Ajustes: renombrar el restaurante actualiza la web sola.
 import { headers } from "next/headers";
 import Link from "next/link";
-import { and, asc, eq, isNotNull } from "drizzle-orm";
-import { conPlazo, getDb, schema } from "@/lib/db";
 import { cargarMandos } from "@/lib/reservas/mandos-db";
 import { eur } from "@/lib/utils";
 import { HeaderWeb, Reveal } from "./ui";
@@ -18,58 +16,72 @@ export const dynamic = "force-dynamic";
 
 const BRONCE = "#A47B4F";
 
-// Fotos de ambiente (CDN Unsplash, licencia libre) — placeholders hasta tener
-// reportaje propio: se sustituyen subiendo ficheros a /public y cambiando URLs.
+// Fotos de ambiente (CDN Unsplash, licencia libre) con intención "de casa"
+// (fuego, manos, sobremesa — nada de bodegón comercial), estilo fotos reales
+// de perfil de Google. Placeholders hasta tener reportaje propio: se
+// sustituyen subiendo ficheros a /public y cambiando URLs.
 const FOTOS = {
-  hero: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=2200&q=70",
-  casa: "https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?auto=format&fit=crop&w=1000&q=70",
+  hero: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=2200&q=70",
+  casa: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=1000&q=70",
   mercado: "https://images.unsplash.com/photo-1488459716781-31db52582fe9?auto=format&fit=crop&w=900&q=70",
   brasa: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=900&q=70",
   bodega: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=900&q=70",
-  sala: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=70",
-  detalle: "https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=1200&q=70",
+  sala: "https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=1200&q=70",
+  detalle: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=1200&q=70",
   terraza: "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1200&q=70",
-  mesa: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=2200&q=70",
+  mesa: "https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?auto=format&fit=crop&w=2200&q=70",
 };
 
-type TipoPlato = "entrante" | "principal" | "postre" | "bebida" | "otro";
-type PlatoCarta = { nombre: string; tipo: TipoPlato; pvp: number };
+// La carta REAL de la casa, en catalán (los precios son provisionales hasta
+// fijar los definitivos). Cuando la carta esté cargada en el CRM con sus PVP
+// reales, se puede volver a pintar en vivo desde la tabla platos.
+type PlatoCarta = { nombre: string; pvp: number; nota?: string };
 
-// Carta pública: platos activos con precio fijado, sin sub-recetas internas.
-async function getCartaPublica(): Promise<PlatoCarta[]> {
-  const db = getDb();
-  if (!db) return [];
-  try {
-    const filas = await conPlazo(
-      db
-        .select({ nombre: schema.platos.nombre, tipo: schema.platos.tipoPlato, pvp: schema.platos.pvp })
-        .from(schema.platos)
-        .where(
-          and(
-            eq(schema.platos.activo, true),
-            eq(schema.platos.esPreparacion, false),
-            isNotNull(schema.platos.pvp),
-          ),
-        )
-        .orderBy(asc(schema.platos.nombre)),
-    );
-    return filas
-      .map((f) => ({ nombre: f.nombre, tipo: f.tipo, pvp: Number(f.pvp) }))
-      .filter((f) => f.pvp > 0);
-  } catch (e) {
-    console.error("[web] getCartaPublica falló:", e instanceof Error ? e.message : e);
-    return [];
-  }
-}
-
-const GRUPOS_CARTA: { tipo: TipoPlato; titulo: string }[] = [
-  { tipo: "entrante", titulo: "Para empezar" },
-  { tipo: "principal", titulo: "Principales" },
-  { tipo: "postre", titulo: "Dulce final" },
+const CARTA: { titulo: string; platos: PlatoCarta[] }[] = [
+  {
+    titulo: "Per picar",
+    platos: [
+      { nombre: "Braves", pvp: 6.5 },
+      { nombre: "Cecina", pvp: 12 },
+      { nombre: "Croqueta de pollastre a la brasa", pvp: 2.9, nota: "u." },
+      { nombre: "Amanida de tomàquet", pvp: 9.5 },
+      { nombre: "Torradeta d'anxova fumada", pvp: 4.8, nota: "u." },
+      { nombre: "Formatge de cabra i figues a la brasa", pvp: 11.5 },
+    ],
+  },
+  {
+    titulo: "Platillos",
+    platos: [
+      { nombre: "Macarrons de rostit de pollastre", pvp: 12.5 },
+      { nombre: "Musclos a la marinera", pvp: 13.5 },
+      { nombre: "Carxofa amb pernil", pvp: 14.5 },
+      { nombre: "Calamarsets", pvp: 16.9 },
+      { nombre: "Albergínia a la brasa amb ricotta i nous", pvp: 12 },
+      { nombre: "Tomàquet confitat amb porro i stracciatella", pvp: 13 },
+    ],
+  },
+  {
+    titulo: "Brasa",
+    platos: [
+      { nombre: "Roger a la brasa amb pilpil", pvp: 19.5 },
+      { nombre: "Parpatana de tonyina a la brasa", pvp: 24 },
+      { nombre: "Llagostí a la brasa", pvp: 22 },
+      { nombre: "Xuleta a la brasa", pvp: 58, nota: "kg" },
+    ],
+  },
+  {
+    titulo: "Postres",
+    platos: [
+      { nombre: "Carquinyolis i encenalls", pvp: 6.5 },
+      { nombre: "Moixaines", pvp: 7 },
+      { nombre: "Torrija de croissant", pvp: 7.5 },
+      { nombre: "Préssec amb gelat de vainilla", pvp: 6.9 },
+    ],
+  },
 ];
 
 export default async function WebPage() {
-  const [mandos, carta] = await Promise.all([cargarMandos(), getCartaPublica()]);
+  const mandos = await cargarMandos();
   const r = mandos.restaurante;
 
   const mapsUrl =
@@ -79,11 +91,6 @@ export default async function WebPage() {
   const cab = await headers();
   const host = cab.get("host") ?? "";
   const base = host ? `${cab.get("x-forwarded-proto") ?? "https"}://${host}` : "";
-
-  const grupos = GRUPOS_CARTA.map((g) => ({
-    ...g,
-    platos: carta.filter((p) => p.tipo === g.tipo),
-  })).filter((g) => g.platos.length > 0);
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -230,48 +237,49 @@ export default async function WebPage() {
           <Cabecera kicker="La carta" titulo="Lo que da el mercado esta semana" />
         </Reveal>
 
-        {grupos.length > 0 ? (
-          <>
-            <div className="mt-12 grid gap-x-16 gap-y-12 md:grid-cols-2">
-              {grupos.map((g, i) => (
-                <Reveal key={g.tipo} delay={i * 120} className={g.platos.length > 9 ? "md:col-span-2" : undefined}>
-                  <div>
-                    <h3
-                      className="mb-5 text-[11px] font-bold tracking-[0.26em] uppercase"
-                      style={{ color: BRONCE }}
-                    >
-                      {g.titulo}
-                    </h3>
-                    <ul className={g.platos.length > 9 ? "grid gap-x-16 md:grid-cols-2" : undefined}>
-                      {g.platos.map((p) => (
-                        <li key={p.nombre} className="flex items-baseline py-2 text-[15px]">
-                          <span className="f-serif text-[17px]">{p.nombre}</span>
-                          <span className="leader" aria-hidden />
-                          <span className="tabular-nums">{eur(p.pvp)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
-            <Reveal>
-              <p className="mt-10 border-t border-ink/15 pt-5 text-[13px] text-ink-soft">
-                Precios con IVA. La carta cambia con el mercado — si un plato se acaba, se acaba.
-                Alergias e intolerancias: pregúntanos en sala.
-              </p>
+        {/* El ritual de la casa: la cervesa con su picada, destacado como
+            una línea de bienvenida antes de la carta */}
+        <Reveal>
+          <div className="mt-10 flex flex-wrap items-baseline gap-x-4 gap-y-1 border border-ink/20 px-6 py-5">
+            <span className="f-serif text-[22px] font-light italic">Amb la cervesa</span>
+            <span className="text-[13.5px] text-ink-soft">oliva gilda o brava</span>
+            <span className="leader" aria-hidden />
+            <span className="tabular-nums text-[15px]">{eur(4)}</span>
+          </div>
+        </Reveal>
+
+        <div className="mt-12 grid gap-x-16 gap-y-12 md:grid-cols-2">
+          {CARTA.map((g, i) => (
+            <Reveal key={g.titulo} delay={i * 120}>
+              <div>
+                <h3
+                  className="mb-5 text-[11px] font-bold tracking-[0.26em] uppercase"
+                  style={{ color: BRONCE }}
+                >
+                  {g.titulo}
+                </h3>
+                <ul>
+                  {g.platos.map((p) => (
+                    <li key={p.nombre} className="flex items-baseline py-2 text-[15px]">
+                      <span className="f-serif text-[17px]">{p.nombre}</span>
+                      <span className="leader" aria-hidden />
+                      <span className="tabular-nums whitespace-nowrap">
+                        {eur(p.pvp)}
+                        {p.nota && <span className="ml-1 text-[12px] text-ink-soft">/ {p.nota}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </Reveal>
-          </>
-        ) : (
-          <Reveal>
-            <p className="f-serif mt-12 max-w-xl text-[22px] leading-snug font-light">
-              La carta se escribe cada semana con lo que da el mercado.
-              <span className="mt-3 block text-[15px] font-normal text-ink-soft">
-                Pídela en sala{r.telefono ? ` o llámanos al ${r.telefono}` : ""} — y déjate aconsejar.
-              </span>
-            </p>
-          </Reveal>
-        )}
+          ))}
+        </div>
+        <Reveal>
+          <p className="mt-10 border-t border-ink/15 pt-5 text-[13px] text-ink-soft">
+            Preus amb IVA. La carta canvia amb el mercat — si un plat s&apos;acaba, s&apos;acaba.
+            Al·lèrgies i intoleràncies: pregunta&apos;ns a sala.
+          </p>
+        </Reveal>
       </section>
 
       {/* ══ EL ESPACIO ══ */}
@@ -308,6 +316,50 @@ export default async function WebPage() {
               hicimos como la cocina: materiales nobles, nada que sobre.
             </p>
           </Reveal>
+        </div>
+      </section>
+
+      {/* ══ EL EQUIPO ══ */}
+      <section id="equipo" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-20 md:py-28">
+        <Reveal>
+          <Cabecera kicker="El equipo" titulo="Dos socios, una casa" />
+        </Reveal>
+
+        <Reveal delay={120}>
+          <p className="f-serif mt-10 max-w-2xl text-[clamp(20px,2.6vw,26px)] leading-snug font-light">
+            Dos socios jóvenes y una idea vieja: producto, fuego y hospitalidad. Uno manda en la sala,
+            el otro en la brasa — y la casa es de los dos.
+          </p>
+        </Reveal>
+
+        <div className="mt-12 grid gap-8 md:grid-cols-2">
+          {[
+            {
+              inicial: "P",
+              nombre: "Pau",
+              rol: "Jefe de sala · Socio",
+              bio: "La sala es suya: los vinos vivos de la bodega, la memoria de cada mesa y la sobremesa como religión. Si has venido dos veces, ya sabe qué bebes.",
+            },
+            {
+              inicial: "I",
+              nombre: "Iou",
+              rol: "Jefe de cocina · Socio",
+              bio: "El fuego es suyo: mercado de mañana, brasa de encina y una carta corta que no necesita discurso. Lo que no está en su punto, no sale al pase.",
+            },
+          ].map((s, i) => (
+            <Reveal key={s.nombre} delay={i * 150}>
+              <article className="flex h-full flex-col border border-ink/20 p-8 transition-colors hover:bg-ink hover:text-paper md:p-10">
+                <span className="f-serif text-[64px] leading-none font-light" style={{ color: BRONCE }}>
+                  {s.inicial}
+                </span>
+                <h3 className="f-serif mt-6 text-[30px] font-light">{s.nombre}</h3>
+                <p className="mt-1 text-[11px] font-bold tracking-[0.26em] uppercase" style={{ color: BRONCE }}>
+                  {s.rol}
+                </p>
+                <p className="mt-5 text-[14.5px] leading-relaxed opacity-80">{s.bio}</p>
+              </article>
+            </Reveal>
+          ))}
         </div>
       </section>
 
@@ -447,6 +499,7 @@ export default async function WebPage() {
             <a href="#casa" className="hover:text-white">La casa</a>
             <a href="#carta" className="hover:text-white">La carta</a>
             <a href="#espacio" className="hover:text-white">El espacio</a>
+            <a href="#equipo" className="hover:text-white">El equipo</a>
             <Link href="/reservar" className="hover:text-white">Reservar mesa</Link>
           </div>
         </div>
