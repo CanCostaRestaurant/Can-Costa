@@ -1,0 +1,81 @@
+/* Web pública del restaurante — helpers de la dirección de arte
+   "carta editorial mediterránea": papel+tinta, serif light, bronce único. */
+
+/* Serif de display (Cormorant Garamond via next/font, var en el layout) */
+.f-serif {
+  font-family: var(--font-serifweb), Georgia, "Times New Roman", serif;
+}
+
+/* Revelado al entrar en viewport (lo activa el componente <Reveal>) */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.reveal-vista {
+  opacity: 1;
+  transform: none;
+}
+
+/* Ken Burns lento del hero: la foto respira, casi imperceptible */
+@keyframes kb-zoom {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.07);
+  }
+}
+.kenburns {
+  animation: kb-zoom 18s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* Línea de plato de la carta: nombre … precio con puntos conductores */
+.leader {
+  flex: 1;
+  margin: 0 0.6em;
+  border-bottom: 1px dotted rgba(34, 36, 43, 0.35);
+  transform: translateY(-0.28em);
+}
+
+/* Subrayado que crece en los enlaces de la nav */
+.nav-link {
+  position: relative;
+}
+.nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  height: 1px;
+  width: 100%;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.nav-link:hover::after {
+  transform: scaleX(1);
+}
+
+/* Scroll suave para las anclas de la página */
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kenburns {
+    animation: none;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
