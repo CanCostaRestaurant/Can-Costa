@@ -380,13 +380,13 @@ export default async function WebPage() {
               foto: "photo-1500648767791-00dcc994a43e",
               nombre: "Pau",
               rol: "Jefe de sala · Socio",
-              bio: "La sala es suya: los vinos vivos de la bodega, la memoria de cada mesa y la sobremesa como religión. Si has venido dos veces, ya sabe qué bebes.",
+              bio: "El primero en llegar y el último en apagar las luces. Lleva la sala como se llevan las casas buenas: nombres aprendidos, copas que se adelantan a la sed y sobremesas que nadie quiere cerrar. Los vinos los elige él, uno a uno, de payés y de amigo.",
             },
             {
               foto: "photo-1577219491135-ce391730fb2c",
               nombre: "Iou",
               rol: "Jefe de cocina · Socio",
-              bio: "El fuego es suyo: mercado de mañana, brasa de encina y una carta corta que no necesita discurso. Lo que no está en su punto, no sale al pase.",
+              bio: "Empieza el día en el mercado y lo acaba mirando brasas. Cocina de producto con manos tranquilas: pocas cosas en el plato, todas con motivo. La carta es corta porque él es exigente — lo que no emociona, no sale al pase.",
             },
           ].map((s, i) => (
             <Reveal key={s.nombre} delay={i * 150}>
