@@ -6,7 +6,7 @@
 // elegibles (nunca tachadas); solo al darle a Continuar se comprueba la
 // disponibilidad en fresco y, si esa hora está completa, se proponen las
 // horas libres más cercanas para que el cliente no se vaya sin reservar.
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   ArrowLeft,
   CalendarCheck,
@@ -178,6 +178,19 @@ export function ReservarWidget({
   const [error, setError] = useState<string | null>(null);
   const [hecho, setHecho] = useState<ResultadoReservaWeb | null>(null);
 
+  // En móvil, al saltar de paso el viewport se quedaba a media página y el
+  // formulario aparecía "cortado": subir la tarjeta al cambiar de paso o al
+  // confirmar (nunca en el primer render).
+  const tarjetaRef = useRef<HTMLElement>(null);
+  const montado = useRef(false);
+  useEffect(() => {
+    if (!montado.current) {
+      montado.current = true;
+      return;
+    }
+    tarjetaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [paso, hecho]);
+
   // La parrilla de horas del día (turnos). Se pinta SIN estados de ocupación:
   // todas elegibles; la comprobación real llega al pulsar Continuar. Este efecto
   // SOLO recarga slots — no toca la selección, para poder saltar a otra fecha
@@ -307,7 +320,7 @@ export function ReservarWidget({
     })();
 
     return (
-      <section className="anim-in w-full rounded-[10px] bg-white/[.97] p-8 text-center shadow-xl backdrop-blur-sm md:p-10">
+      <section ref={tarjetaRef} className="anim-in w-full scroll-mt-4 rounded-[10px] bg-white/[.97] p-8 text-center shadow-xl backdrop-blur-sm md:p-10">
         <div className="mx-auto grid size-12 place-items-center rounded-full border border-ink/20 text-ink">
           <Check className="size-5" />
         </div>
@@ -354,7 +367,7 @@ export function ReservarWidget({
 
   // ── Motor en dos pasos ──
   return (
-    <section className="anim-in w-full rounded-[10px] bg-white/[.97] p-7 shadow-xl backdrop-blur-sm md:p-9">
+    <section ref={tarjetaRef} className="anim-in w-full scroll-mt-4 rounded-[10px] bg-white/[.97] p-7 shadow-xl backdrop-blur-sm md:p-9">
       {/* Migas de paso: 1. Reserva → 2. Cliente */}
       <div className="mb-7 flex items-center gap-4 border-b border-ink/10 pb-3">
         <button
