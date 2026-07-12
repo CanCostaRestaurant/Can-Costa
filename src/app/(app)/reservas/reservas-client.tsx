@@ -296,11 +296,14 @@ function FilaReserva({
       <b className="w-14 shrink-0 font-display text-lg font-bold tracking-tight">{r.hora}</b>
       <div className="min-w-32 flex-1">
         <b
-          className="flex items-center gap-2 text-sm font-semibold"
+          className="block truncate text-sm font-semibold"
           title={r.notas ? `${r.nombre} · ${r.notas}` : r.nombre}
         >
-          <span className="min-w-0 truncate">{r.nombre}</span>
-          {r.origen === "web" && <Chip tone="good" className="shrink-0 align-middle">web</Chip>}
+          {r.nombre}
+          {r.origen === "web" && <Chip tone="good" className="ml-2 align-middle">web</Chip>}
+          {r.notas && <span className="ml-2 font-normal text-ink-soft">· {r.notas}</span>}
+        </b>
+        <small className="flex flex-wrap items-center gap-2 text-xs text-ink-soft">
           {!terminal && (
             <BadgeConfirmacion
               confirmada={r.confirmadaCliente}
@@ -309,9 +312,6 @@ function FilaReserva({
               onToggle={() => onEjecutar(() => marcarConfirmadaCliente(r.id, !r.confirmadaCliente))}
             />
           )}
-          {r.notas && <span className="truncate font-normal text-ink-soft">· {r.notas}</span>}
-        </b>
-        <small className="flex items-center gap-2 text-xs text-ink-soft">
           <span className="flex items-center gap-1">
             <Users className="size-3" /> {r.comensales}
           </span>
