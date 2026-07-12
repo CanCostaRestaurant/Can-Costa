@@ -193,6 +193,7 @@ export async function reservarPublica(datos: {
   comensales: number;
   notas?: string;
   companyia?: string; // honeypot: debe llegar vacío
+  origen?: "web" | "telefono"; // 'telefono' = agente de voz (/api/voz)
 }): Promise<ResultadoReservaWeb> {
   const db = getDb();
   if (!db) return { ok: false, error: "Las reservas online no están disponibles ahora mismo" };
@@ -307,7 +308,7 @@ export async function reservarPublica(datos: {
         mesaId: sugerencia.mesaId,
         mesa2Id: sugerencia.mesa2Id,
         notas: notas || null,
-        origen: "web",
+        origen: datos.origen === "telefono" ? "telefono" : "web",
         notifEmailAt: resEmail?.enviado ? new Date() : null,
         notifSmsAt: resSms?.enviado ? new Date() : null,
       }),

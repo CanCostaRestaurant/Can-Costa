@@ -9,7 +9,8 @@ import { COOKIE_SESION, verificarSesion, type RolUsuario } from "@/lib/auth";
 // redirige a /login y el cron nunca llega a ejecutar su handler.
 // /reservar = reservas web públicas (los clientes reservan sin login).
 // /web = la web pública del restaurante (marketing + carta + reservas).
-const RUTAS_PUBLICAS = ["/login", "/api/salud", "/api/cron", "/reservar", "/web"];
+// /api/voz = tools del agente de voz telefónico (Bearer VOZ_SECRET/CRON_SECRET).
+const RUTAS_PUBLICAS = ["/login", "/api/salud", "/api/cron", "/reservar", "/web", "/api/voz"];
 
 function esPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((p) => pathname === p || pathname.startsWith(p + "/"));
