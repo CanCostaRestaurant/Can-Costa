@@ -11,7 +11,7 @@ import { cargarMandos } from "@/lib/reservas/mandos-db";
 import { duracionPorComensales } from "@/lib/reservas/config";
 import { horaAMinutos, sugerirMesa, type MesaAsignable, type Ocupacion } from "@/lib/reservas/asignador";
 import { calcularDisponibilidad, minutosAHora, type SlotDisponibilidad } from "@/lib/reservas/disponibilidad";
-import { enviarEmailConfirmacion, enviarSmsConfirmacion } from "@/lib/notificaciones/reserva";
+import { enviarEmailConfirmacion, enviarSmsConfirmacion, etiquetaZona } from "@/lib/notificaciones/reserva";
 import { buscarCoincidencia, normalizarEmail } from "@/lib/clientes/identidad";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
@@ -279,6 +279,9 @@ export async function reservarPublica(datos: {
       ? `${sugerencia.mesaNombre} + ${sugerencia.mesa2Nombre}`
       : sugerencia.mesaNombre;
 
+    // Al cliente solo la ZONA (terraza/interior), no el nº de mesa concreto.
+    const zonaCliente = etiquetaZona(mesas.find((m) => m.id === sugerencia.mesaId)?.zona ?? null);
+
     // Confirmación al cliente por los canales que haya dejado.
     const confirmacion = {
       nombre,
@@ -288,7 +291,7 @@ export async function reservarPublica(datos: {
       hora: datos.hora,
       comensales: pax,
       hastaHora,
-      mesa: mesaNombre,
+      zona: zonaCliente,
     };
     const [resEmail, resSms] = await Promise.all([
       email ? enviarEmailConfirmacion(confirmacion, mandos) : Promise.resolve(null),

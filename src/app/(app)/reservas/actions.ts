@@ -20,6 +20,7 @@ import {
 import {
   enviarEmailConfirmacion,
   enviarSmsConfirmacion,
+  etiquetaZona,
   type DatosConfirmacion,
 } from "@/lib/notificaciones/reserva";
 import { buscarCoincidencia, normalizarEmail } from "@/lib/clientes/identidad";
@@ -174,10 +175,15 @@ export async function crearReserva(datos: {
     // Confirmación al cliente ANTES de insertar los timestamps: se apuntan
     // solo los envíos que realmente salieron.
     const hastaHora = minutosAHora(inicioMin + duracionMin);
+    // El personal SÍ ve la mesa concreta (se devuelve al CRM); al cliente solo
+    // la ZONA (terraza/interior), porque el nº puede cambiar el día del servicio.
     const mesaNombre = sugerencia
       ? sugerencia.mesa2Nombre
         ? `${sugerencia.mesaNombre} + ${sugerencia.mesa2Nombre}`
         : sugerencia.mesaNombre
+      : null;
+    const zonaCliente = sugerencia
+      ? etiquetaZona(mesas.find((m) => m.id === sugerencia.mesaId)?.zona ?? null)
       : null;
 
     const confirmacion: DatosConfirmacion = {
@@ -188,7 +194,7 @@ export async function crearReserva(datos: {
       hora: datos.hora,
       comensales: Math.round(datos.comensales),
       hastaHora,
-      mesa: mesaNombre,
+      zona: zonaCliente,
     };
     const [resEmail, resSms] = await Promise.all([
       datos.notificar?.email ? enviarEmailConfirmacion(confirmacion, mandos) : Promise.resolve(null),

@@ -19,10 +19,19 @@ export type DatosConfirmacion = {
   hora: string; // HH:MM
   comensales: number;
   hastaHora: string; // fin del doblaje: "tu mesa hasta las 22:30"
-  mesa: string | null;
+  zona: string | null; // "Terraza" / "Interior" — al cliente NO se le dice el nº de mesa
 };
 
 export type ResultadoEnvio = { enviado: boolean; motivo?: string };
+
+// Al cliente solo le decimos la zona (terraza o interior), no la mesa concreta:
+// el número de mesa lo asignamos nosotros y puede cambiar el día del servicio.
+export function etiquetaZona(zona: "sala" | "terraza" | "barra" | null | undefined): string | null {
+  if (zona === "terraza") return "Terraza";
+  if (zona === "barra") return "Barra";
+  if (zona === "sala") return "Interior";
+  return null;
+}
 
 const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 const MESES = [
@@ -65,8 +74,8 @@ export async function enviarEmailConfirmacion(
 
   const r = mandos.restaurante;
   const nombrePila = datos.nombre.split(" ")[0];
-  // Sobrio, sin emojis ni botones de color chillón: menos "newsletter" = menos
-  // probabilidad de spam. Un solo enlace de texto para "cómo llegar".
+  // Sobrio (sin colores chillones ni imágenes) para no parecer "newsletter" y
+  // reducir spam, pero con UN botón claro —en tinta oscura— para el calendario.
   const html = `
   <div style="font-family:Georgia,'Times New Roman',serif;max-width:520px;margin:0 auto;color:#1c1917">
     <p style="margin:0 0 4px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#78716c">${r.nombre}</p>
@@ -75,13 +84,16 @@ export async function enviarEmailConfirmacion(
     <table style="width:100%;border-collapse:collapse;font-family:system-ui,sans-serif;font-size:14px">
       <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#78716c">Día</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right"><b>${fechaLarga(datos.fecha)}</b></td></tr>
       <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#78716c">Hora</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right"><b>${datos.hora}</b> · mesa hasta las ${datos.hastaHora}</td></tr>
-      <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#78716c">Comensales</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right"><b>${datos.comensales}</b>${datos.mesa ? ` · ${datos.mesa}` : ""}</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#78716c">Comensales</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right"><b>${datos.comensales}</b>${datos.zona ? ` · ${datos.zona}` : ""}</td></tr>
     </table>
-    <p style="margin:18px 0 0;font-family:system-ui,sans-serif;font-size:14px">
-      ${r.direccion ? `${r.direccion} — <a href="${urlMaps(r)}" style="color:#1c1917">cómo llegar</a>. ` : ""}<a href="${urlCalendar(datos, r)}" style="color:#1c1917">Añadir al calendario</a>.
+    <div style="text-align:center;margin:26px 0 6px">
+      <a href="${urlCalendar(datos, r)}" style="display:inline-block;background:#1c1917;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-size:15px;font-weight:600;padding:14px 30px;border-radius:10px">Añadir al calendario</a>
+    </div>
+    <p style="margin:10px 0 0;text-align:center;font-family:system-ui,sans-serif;font-size:13px;color:#78716c">
+      Guarda la reserva en tu móvil para que no se te olvide.
     </p>
-    <p style="margin:14px 0 0;font-family:system-ui,sans-serif;font-size:13px;color:#78716c">
-      ${r.telefono ? `Si no puedes venir, avísanos al ${r.telefono}.` : "Si no puedes venir, responde a este correo y lo anulamos."}
+    <p style="margin:20px 0 0;font-family:system-ui,sans-serif;font-size:14px;color:#57534e">
+      ${r.direccion ? `${r.direccion} — <a href="${urlMaps(r)}" style="color:#1c1917">cómo llegar</a>. ` : ""}${r.telefono ? `Si no puedes venir, avísanos al ${r.telefono}.` : "Si no puedes venir, responde a este correo y lo anulamos."}
     </p>
   </div>`;
 
@@ -93,7 +105,7 @@ export async function enviarEmailConfirmacion(
     ``,
     `Día: ${fechaLarga(datos.fecha)}`,
     `Hora: ${datos.hora} (mesa hasta las ${datos.hastaHora})`,
-    `Comensales: ${datos.comensales}${datos.mesa ? ` · ${datos.mesa}` : ""}`,
+    `Comensales: ${datos.comensales}${datos.zona ? ` · ${datos.zona}` : ""}`,
     ``,
     r.direccion ? `Dirección: ${r.direccion}` : null,
     `Cómo llegar: ${urlMaps(r)}`,
