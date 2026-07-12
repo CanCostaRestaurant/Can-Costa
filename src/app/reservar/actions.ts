@@ -16,6 +16,11 @@ import { buscarCoincidencia, normalizarEmail } from "@/lib/clientes/identidad";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
+// ¿Cae la fecha en un día de cierre semanal? (mediodía para esquivar TZ)
+function esDiaCerrado(fecha: string, mandos: { diasCierre: number[] }): boolean {
+  return mandos.diasCierre.includes(new Date(`${fecha}T12:00:00`).getDay());
+}
+
 async function mesasAsignables(db: Db): Promise<MesaAsignable[]> {
   const filas = await conPlazo(db.select().from(schema.mesas).where(eq(schema.mesas.activo, true)));
   return filas.map((m) => ({
@@ -64,6 +69,9 @@ export async function disponibilidadPublica(
 
   try {
     const mandos = await cargarMandos();
+    // Día de cierre: parrilla vacía (la web muestra "no hay horario" y el
+    // agente de voz recibe cerrado=true para decirlo con claridad).
+    if (esDiaCerrado(fecha, mandos)) return { ok: true, slots: [] };
     const [mesas, ocupaciones, reservasDia] = await Promise.all([
       mesasAsignables(db),
       ocupacionesDelDia(db, fecha),
@@ -156,6 +164,7 @@ export async function proximasFechasLibres(
     const esLibre = (s: SlotDisponibilidad) => s.estado === "libre" || s.estado === "pocas";
     const fechas: { fecha: string; hora: string }[] = [];
     for (const dia of dias) {
+      if (esDiaCerrado(dia, mandos)) continue; // no ofrecer días de cierre
       const b = porDia.get(dia) ?? { ocupaciones: [], entradas: [] };
       const slots = calcularDisponibilidad(pax, mesas, b.ocupaciones, b.entradas, mandos);
       const primera = slots.find(esLibre); // slots vienen en orden cronológico
@@ -222,6 +231,12 @@ export async function reservarPublica(datos: {
 
   try {
     const mandos = await cargarMandos();
+
+    // Días de cierre semanal: los canales públicos no reservan (el equipo
+    // sí puede forzar desde el CRM para eventos).
+    if (esDiaCerrado(datos.fecha, mandos)) {
+      return { ok: false, error: "Ese día el restaurante está cerrado" };
+    }
 
     // La hora debe caer dentro de un turno de servicio (el público no fuerza).
     const enServicio = mandos.servicios.some((s) => datos.hora >= s.inicio && datos.hora <= s.fin);

@@ -59,7 +59,15 @@ const CLASE_CONTROL =
   "w-full rounded-[6px] border border-ink/20 bg-white px-3.5 py-2.5 text-[14.5px] text-ink outline-none transition-colors focus:border-ink";
 
 // ── Calendario mensual (lunes primero, ventana hoy → hoy+60 días) ──────
-function Calendario({ fecha, onFecha }: { fecha: string; onFecha: (v: string) => void }) {
+function Calendario({
+  fecha,
+  onFecha,
+  diasCierre,
+}: {
+  fecha: string;
+  onFecha: (v: string) => void;
+  diasCierre: number[];
+}) {
   const hoy = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -116,7 +124,8 @@ function Calendario({ fecha, onFecha }: { fecha: string; onFecha: (v: string) =>
         {Array.from({ length: diasEnMes }, (_, i) => {
           const d = new Date(mes.getFullYear(), mes.getMonth(), i + 1);
           const valor = isoDe(d);
-          const fuera = d.getTime() < hoy.getTime() || d.getTime() > max.getTime();
+          const fuera =
+            d.getTime() < hoy.getTime() || d.getTime() > max.getTime() || diasCierre.includes(d.getDay());
           const activo = valor === fecha;
           const esHoy = d.getTime() === hoy.getTime();
           return (
@@ -147,12 +156,20 @@ export function ReservarWidget({
   nombreLocal,
   telefono,
   mapsUrl,
+  diasCierre = [],
 }: {
   nombreLocal: string;
   telefono: string;
   mapsUrl: string;
+  diasCierre?: number[];
 }) {
-  const hoyISO = useMemo(() => isoDe(new Date()), []);
+  // Arrancar en el primer día ABIERTO (si hoy es día de cierre, saltarlo).
+  const hoyISO = useMemo(() => {
+    const d = new Date();
+    for (let i = 0; i < 7 && diasCierre.includes(d.getDay()); i++) d.setDate(d.getDate() + 1);
+    return isoDe(d);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [paso, setPaso] = useState<"reserva" | "cliente">("reserva");
   const [pax, setPax] = useState(2);
   const [fecha, setFecha] = useState(hoyISO);
@@ -399,6 +416,7 @@ export function ReservarWidget({
             <div className={cn(CLASE_ETIQUETA, "mb-3")}>Fecha</div>
             <Calendario
               fecha={fecha}
+              diasCierre={diasCierre}
               onFecha={(v) => {
                 setFecha(v);
                 limpiarSeleccion();

@@ -44,6 +44,11 @@ export type MandosReservas = {
   // "no disponible" (reservable solo a mano, forzando).
   servicios: ServicioTurno[];
 
+  // Días de CIERRE semanal (0=domingo … 6=sábado). Los canales públicos
+  // (web y agente de voz) no ofrecen ni aceptan reservas esos días; el
+  // equipo puede seguir forzando una reserva a mano desde el CRM (eventos).
+  diasCierre: number[];
+
   // Datos del local para las confirmaciones por email/SMS.
   restaurante: {
     nombre: string;
@@ -62,6 +67,7 @@ export const MANDOS_POR_DEFECTO: MandosReservas = {
     { nombre: "Comida", inicio: "13:00", fin: "15:30" },
     { nombre: "Cena", inicio: "20:00", fin: "23:00" },
   ],
+  diasCierre: [],
   restaurante: {
     nombre: "Can Costa",
     direccion: "Barcelona",
@@ -96,6 +102,12 @@ export function normalizarMandos(crudo: unknown): MandosReservas {
         .slice(0, 6)
     : d.servicios;
 
+  // 0-6, sin duplicados, y nunca los 7 (cerrar todos los días rompería
+  // todos los canales; eso se hace pausando reservas, no cerrando la semana).
+  const diasCierre = Array.isArray(c.diasCierre)
+    ? [...new Set(c.diasCierre.filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].slice(0, 6)
+    : d.diasCierre;
+
   return {
     doblaje: {
       hasta2: minutos(c.doblaje?.hasta2, d.doblaje.hasta2),
@@ -107,6 +119,7 @@ export function normalizarMandos(crudo: unknown): MandosReservas {
     pasoMin: c.pasoMin === 30 ? 30 : 15, // solo 15 o 30
     cupoPorTramo: minutos(c.cupoPorTramo, d.cupoPorTramo, 0, 500),
     servicios: servicios.length ? servicios : d.servicios,
+    diasCierre,
     restaurante: {
       nombre: String(c.restaurante?.nombre || d.restaurante.nombre).slice(0, 80),
       direccion: String(c.restaurante?.direccion ?? d.restaurante.direccion).slice(0, 160),

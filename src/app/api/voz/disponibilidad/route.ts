@@ -4,6 +4,7 @@
 // LLM de la plataforma lo verbalice sin inventar nada.
 import { NextResponse, type NextRequest } from "next/server";
 import { disponibilidadPublica, proximasFechasLibres } from "@/app/reservar/actions";
+import { cargarMandos } from "@/lib/reservas/mandos-db";
 import { aMin, autorizado, fechaHablada, hoyMadrid } from "../comun";
 
 export const maxDuration = 30;
@@ -35,6 +36,30 @@ export async function POST(req: NextRequest) {
   }
   if (fecha < hoyMadrid()) {
     return NextResponse.json({ ok: false, error: "Esa fecha ya ha pasado" }, { status: 400 });
+  }
+
+  // Día de cierre semanal: decirlo con claridad (no es "completo") y
+  // ofrecer directamente las próximas fechas con hueco.
+  const mandos = await cargarMandos();
+  const diaSemana = new Date(`${fecha}T12:00:00`).getDay();
+  if (mandos.diasCierre.includes(diaSemana)) {
+    const otras = await proximasFechasLibres(fecha, pax);
+    return NextResponse.json({
+      ok: true,
+      fecha,
+      fecha_hablada: fechaHablada(fecha),
+      comensales: pax,
+      cerrado: true,
+      mensaje: "Ese día el restaurante cierra (descanso semanal). Ofrece las otras_fechas_con_hueco.",
+      hay_mesa: false,
+      horas_libres: [],
+      hora_pedida: null,
+      otras_fechas_con_hueco: (otras.ok ? (otras.fechas ?? []) : []).map((f) => ({
+        fecha: f.fecha,
+        fecha_hablada: fechaHablada(f.fecha),
+        desde_hora: f.hora,
+      })),
+    });
   }
 
   const res = await disponibilidadPublica(fecha, pax);
@@ -82,6 +107,7 @@ export async function POST(req: NextRequest) {
     fecha,
     fecha_hablada: fechaHablada(fecha),
     comensales: pax,
+    cerrado: false,
     hay_mesa: libres.length > 0,
     horas_libres: porServicio,
     hora_pedida: horaPedida,

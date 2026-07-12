@@ -183,6 +183,52 @@ export function AjustesReservasClient({ inicial }: { inicial: MandosReservas }) 
             >
               <Plus className="size-3.5" /> Añadir turno
             </button>
+
+            {/* ── Días de cierre semanal ── */}
+            <div className="mt-4 border-t border-line pt-3.5">
+              <span className="text-sm font-semibold">Días de cierre</span>
+              <p className="mt-0.5 mb-2 text-[12px] text-ink-soft">
+                La web y el teléfono no aceptan reservas estos días (a mano desde el CRM sí, para
+                eventos).
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {(
+                  [
+                    [1, "Lun"],
+                    [2, "Mar"],
+                    [3, "Mié"],
+                    [4, "Jue"],
+                    [5, "Vie"],
+                    [6, "Sáb"],
+                    [0, "Dom"],
+                  ] as const
+                ).map(([dia, etiqueta]) => {
+                  const cerrado = mandos.diasCierre.includes(dia);
+                  return (
+                    <button
+                      key={dia}
+                      onClick={() =>
+                        setMandos((m) => ({
+                          ...m,
+                          diasCierre: cerrado
+                            ? m.diasCierre.filter((d) => d !== dia)
+                            : [...m.diasCierre, dia],
+                        }))
+                      }
+                      title={cerrado ? "Cerrado — clic para abrir" : "Abierto — clic para cerrar"}
+                      className={cn(
+                        "cursor-pointer rounded-lg border px-3 py-1.5 text-[13px] font-semibold transition-colors",
+                        cerrado
+                          ? "border-bad bg-bad-soft text-bad line-through"
+                          : "border-line bg-card text-ink-soft hover:border-brand",
+                      )}
+                    >
+                      {etiqueta}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* ── Cupo por tramo ── */}

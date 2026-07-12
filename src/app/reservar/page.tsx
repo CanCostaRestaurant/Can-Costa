@@ -121,7 +121,12 @@ export default async function ReservarPage() {
         </header>
 
         {/* ── Motor de reserva (calendario + horas) ── */}
-        <ReservarWidget nombreLocal={r.nombre} telefono={r.telefono} mapsUrl={mapsUrl} />
+        <ReservarWidget
+          nombreLocal={r.nombre}
+          telefono={r.telefono}
+          mapsUrl={mapsUrl}
+          diasCierre={mandos.diasCierre}
+        />
 
         <p className="anim-in mt-6 text-center text-[12px] text-white/60" style={{ animationDelay: "250ms" }}>
           Reserva sin comisiones, directamente con {r.nombre} · Duración aproximada de la mesa:{" "}
