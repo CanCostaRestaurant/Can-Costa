@@ -30,6 +30,22 @@ export function hoyMadrid(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Madrid" }).format(new Date());
 }
 
+// La fecha de HOY y MAÑANA (Madrid), masticadas, en TODAS las respuestas de
+// los tools: el LLM del agente no tiene reloj fiable y si calcula él "mañana"
+// se equivoca de día (llegó a decir "lunes 13" y reservar el martes 14).
+export function contextoFechas() {
+  const hoy = hoyMadrid();
+  const [y, m, d] = hoy.split("-").map(Number);
+  const man = new Date(Date.UTC(y, m - 1, d + 1));
+  const manana = man.toISOString().slice(0, 10);
+  return {
+    hoy,
+    hoy_hablado: fechaHablada(hoy),
+    manana,
+    manana_hablado: fechaHablada(manana),
+  };
+}
+
 export const aMin = (h: string) => {
   const [H, M] = h.split(":").map(Number);
   return H * 60 + M;

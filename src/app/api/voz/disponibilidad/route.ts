@@ -5,7 +5,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { disponibilidadPublica, proximasFechasLibres } from "@/app/reservar/actions";
 import { cargarMandos } from "@/lib/reservas/mandos-db";
-import { aMin, autorizado, fechaHablada, hoyMadrid } from "../comun";
+import { aMin, autorizado, contextoFechas, fechaHablada, hoyMadrid } from "../comun";
 
 export const maxDuration = 30;
 
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     const otras = await proximasFechasLibres(fecha, pax);
     return NextResponse.json({
       ok: true,
+      ...contextoFechas(),
       fecha,
       fecha_hablada: fechaHablada(fecha),
       comensales: pax,
@@ -104,6 +105,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    ...contextoFechas(),
     fecha,
     fecha_hablada: fechaHablada(fecha),
     comensales: pax,

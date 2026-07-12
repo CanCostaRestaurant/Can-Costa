@@ -3,7 +3,7 @@
 // así renombrar el restaurante o cambiar turnos actualiza también al agente.
 import { NextResponse, type NextRequest } from "next/server";
 import { cargarMandos } from "@/lib/reservas/mandos-db";
-import { autorizado } from "../comun";
+import { autorizado, contextoFechas } from "../comun";
 
 export const maxDuration = 15;
 
@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
   const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
   return NextResponse.json({
     ok: true,
+    ...contextoFechas(),
     nombre: r.nombre,
     direccion: r.direccion || null,
     telefono: r.telefono || null,

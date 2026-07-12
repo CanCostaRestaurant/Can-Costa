@@ -4,7 +4,7 @@
 // devuelve alternativas para que el agente re-ofrezca sin colgar.
 import { NextResponse, type NextRequest } from "next/server";
 import { disponibilidadPublica, reservarPublica } from "@/app/reservar/actions";
-import { aMin, autorizado, fechaHablada } from "../comun";
+import { aMin, autorizado, contextoFechas, fechaHablada } from "../comun";
 
 export const maxDuration = 30;
 
@@ -44,8 +44,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       confirmada: true,
+      ...contextoFechas(),
       fecha: res.fecha,
       fecha_hablada: fechaHablada(res.fecha!),
+      aviso: `La reserva ha quedado para ${fechaHablada(res.fecha!)}. Di al cliente EXACTAMENTE esa fecha con su día de la semana; si no es el día que el cliente quería, cancela el malentendido: pide disculpas y vuelve a empezar con la fecha correcta.`,
       hora: res.hora,
       mesa_hasta: res.hastaHora,
       comensales: res.comensales,
@@ -72,5 +74,10 @@ export async function POST(req: NextRequest) {
       .sort((a, b) => aMin(a) - aMin(b));
   }
 
-  return NextResponse.json({ ok: false, error: res.error ?? "No se pudo reservar", alternativas_horas: alternativas });
+  return NextResponse.json({
+    ok: false,
+    ...contextoFechas(),
+    error: res.error ?? "No se pudo reservar",
+    alternativas_horas: alternativas,
+  });
 }
