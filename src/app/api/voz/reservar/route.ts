@@ -3,7 +3,7 @@
 // de confirmación) con origen='telefono'. Si la mesa voló mientras hablaban,
 // devuelve alternativas para que el agente re-ofrezca sin colgar.
 import { NextResponse, type NextRequest } from "next/server";
-import { disponibilidadPublica, reservarPublica } from "@/app/reservar/actions";
+import { disponibilidadPublica, proximasFechasLibres, reservarPublica } from "@/app/reservar/actions";
 import { aMin, autorizado, contextoFechas, fechaHablada } from "../comun";
 
 export const maxDuration = 30;
@@ -53,6 +53,23 @@ export async function POST(req: NextRequest) {
       comensales: res.comensales,
       sms_confirmacion_enviado: Boolean(res.smsEnviado),
       email_confirmacion_enviado: Boolean(res.emailEnviado),
+    });
+  }
+
+  // Día de cierre: adjuntar las próximas fechas con hueco para que el agente
+  // se recupere en un solo turno (y no ofrezca fechas de su cosecha).
+  if (cuerpo.fecha && /^\d{4}-\d{2}-\d{2}$/.test(cuerpo.fecha) && res.error?.toLowerCase().includes("cerrado")) {
+    const otras = await proximasFechasLibres(cuerpo.fecha, Math.round(Number(cuerpo.comensales)));
+    return NextResponse.json({
+      ok: false,
+      ...contextoFechas(),
+      error: res.error,
+      mensaje: "Ese día cerramos (descanso semanal). Ofrece SOLO las fechas de otras_fechas_con_hueco.",
+      otras_fechas_con_hueco: (otras.ok ? (otras.fechas ?? []) : []).map((f) => ({
+        fecha: f.fecha,
+        fecha_hablada: fechaHablada(f.fecha),
+        desde_hora: f.hora,
+      })),
     });
   }
 

@@ -3,7 +3,7 @@
 // así renombrar el restaurante o cambiar turnos actualiza también al agente.
 import { NextResponse, type NextRequest } from "next/server";
 import { cargarMandos } from "@/lib/reservas/mandos-db";
-import { autorizado, contextoFechas } from "../comun";
+import { autorizado, contextoFechas, NOMBRES_DIA } from "../comun";
 
 export const maxDuration = 15;
 
@@ -12,7 +12,6 @@ export async function GET(req: NextRequest) {
 
   const mandos = await cargarMandos();
   const r = mandos.restaurante;
-  const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
   return NextResponse.json({
     ok: true,
     ...contextoFechas(),
@@ -20,7 +19,7 @@ export async function GET(req: NextRequest) {
     direccion: r.direccion || null,
     telefono: r.telefono || null,
     horarios: mandos.servicios.map((s) => ({ servicio: s.nombre, de: s.inicio, a: s.fin })),
-    dias_cierre: mandos.diasCierre.map((d) => DIAS[d]),
+    dias_cierre: mandos.diasCierre.map((d) => NOMBRES_DIA[d]),
     maximo_comensales_online: 20,
     nota: "Para grupos de más de 20 o eventos, tomar nombre y teléfono y avisar de que el equipo devuelve la llamada.",
   });

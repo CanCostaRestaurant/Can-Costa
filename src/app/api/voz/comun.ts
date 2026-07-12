@@ -13,7 +13,8 @@ export function autorizado(req: NextRequest): boolean {
   return req.headers.get("authorization") === `Bearer ${secreto}`;
 }
 
-const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+export const NOMBRES_DIA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const DIAS = NOMBRES_DIA;
 const MESES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
