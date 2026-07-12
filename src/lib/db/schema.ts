@@ -542,6 +542,12 @@ export const reservas = pgTable(
     // Confirmación automática al cliente (null = no enviada):
     notifEmailAt: timestamp("notif_email_at", { withTimezone: true }),
     notifSmsAt: timestamp("notif_sms_at", { withTimezone: true }),
+    // Recordatorio el día de la cita (WhatsApp) + confirmación del cliente:
+    // recordatorioAt = cuándo se le mandó el "¿confirmas?"; confirmadaClienteAt
+    // = cuándo respondió que SÍ. Reminded sin confirmar = "pendiente" (ámbar);
+    // con confirmadaClienteAt = "confirmada" (verde).
+    recordatorioAt: timestamp("recordatorio_at", { withTimezone: true }),
+    confirmadaClienteAt: timestamp("confirmada_cliente_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

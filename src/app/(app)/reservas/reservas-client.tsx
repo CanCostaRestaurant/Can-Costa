@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import {
   cambiarEstadoReserva,
   crearReserva,
+  marcarConfirmadaCliente,
   reasignarMesa,
   reoptimizarDia,
   sentarReserva,
@@ -300,6 +301,14 @@ function FilaReserva({
         >
           {r.nombre}
           {r.origen === "web" && <Chip tone="good" className="ml-2 align-middle">web</Chip>}
+          {!terminal && (
+            <BadgeConfirmacion
+              confirmada={r.confirmadaCliente}
+              recordado={r.recordado}
+              ocupado={ocupado}
+              onToggle={() => onEjecutar(() => marcarConfirmadaCliente(r.id, !r.confirmadaCliente))}
+            />
+          )}
           {r.notas && <span className="ml-2 font-normal text-ink-soft">· {r.notas}</span>}
         </b>
         <small className="flex items-center gap-2 text-xs text-ink-soft">
@@ -391,6 +400,43 @@ function FilaReserva({
       )}
       </div>
     </div>
+  );
+}
+
+// Estado de confirmación del cliente (verde = confirmada por WhatsApp/a mano;
+// ámbar = recordatorio enviado y sin respuesta; gris = aún sin pedir). Clic
+// para marcar/quitar a mano (por teléfono, o antes de tener WhatsApp).
+function BadgeConfirmacion({
+  confirmada,
+  recordado,
+  ocupado,
+  onToggle,
+}: {
+  confirmada: boolean;
+  recordado: boolean;
+  ocupado: boolean;
+  onToggle: () => void;
+}) {
+  const tono = confirmada ? "good" : recordado ? "warn" : "gray";
+  const texto = confirmada ? "✓ Confirmada" : recordado ? "Pendiente confirmar" : "Sin confirmar";
+  const TONOS: Record<string, string> = {
+    good: "bg-good-soft text-good hover:brightness-95",
+    warn: "bg-warn-soft text-warn hover:brightness-95",
+    gray: "bg-chip text-ink-soft hover:text-ink",
+  };
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={ocupado}
+      title={confirmada ? "Confirmada por el cliente — clic para quitar" : "Marcar como confirmada por el cliente"}
+      className={cn(
+        "ml-2 inline-flex cursor-pointer items-center rounded-full px-2.5 py-0.5 align-middle text-xs font-semibold transition disabled:opacity-50",
+        TONOS[tono],
+      )}
+    >
+      {texto}
+    </button>
   );
 }
 

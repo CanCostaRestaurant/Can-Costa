@@ -379,6 +379,26 @@ export async function cambiarEstadoReserva(
   }
 }
 
+// Confirmación del cliente (verde). Normalmente la pone el webhook de WhatsApp
+// cuando el cliente responde SÍ, pero el personal también puede marcarla o
+// quitarla a mano (útil antes de tener WhatsApp, o si confirman por teléfono).
+export async function marcarConfirmadaCliente(reservaId: string, confirmada: boolean): Promise<Resultado> {
+  const db = getDb();
+  if (!db) return SIN_BD;
+  try {
+    await conPlazo(
+      db
+        .update(schema.reservas)
+        .set({ confirmadaClienteAt: confirmada ? new Date() : null, updatedAt: new Date() })
+        .where(eq(schema.reservas.id, reservaId)),
+    );
+    revalidatePath("/reservas");
+    return { ok: true };
+  } catch (e) {
+    return fallo("marcarConfirmadaCliente", e);
+  }
+}
+
 // Sentar: marca la reserva y abre la comanda de su mesa en el TPV.
 export async function sentarReserva(reservaId: string): Promise<Resultado> {
   const db = getDb();

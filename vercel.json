@@ -5,6 +5,10 @@
     {
       "path": "/api/cron/correo",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/recordatorios",
+      "schedule": "0 8 * * *"
     }
   ]
 }

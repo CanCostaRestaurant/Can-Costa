@@ -1311,6 +1311,8 @@ export type ReservaDia = {
   estado: string;
   notas: string | null;
   origen: string; // "manual" | "web"
+  confirmadaCliente: boolean; // el cliente respondió SÍ al recordatorio → verde
+  recordado: boolean; // se le mandó el recordatorio y aún no ha contestado → ámbar
 };
 
 export type DiaReservas = {
@@ -1367,6 +1369,8 @@ export async function getReservasDia(fecha: string): Promise<DiaReservas> {
           estado: f.reserva.estado,
           notas: f.reserva.notas,
           origen: f.reserva.origen,
+          confirmadaCliente: f.reserva.confirmadaClienteAt !== null,
+          recordado: f.reserva.recordatorioAt !== null,
         }));
 
         const activas = reservasDia.filter((r) => r.estado === "confirmada" || r.estado === "sentada");
