@@ -296,11 +296,11 @@ function FilaReserva({
       <b className="w-14 shrink-0 font-display text-lg font-bold tracking-tight">{r.hora}</b>
       <div className="min-w-32 flex-1">
         <b
-          className="block truncate text-sm font-semibold"
+          className="flex items-center gap-2 text-sm font-semibold"
           title={r.notas ? `${r.nombre} · ${r.notas}` : r.nombre}
         >
-          {r.nombre}
-          {r.origen === "web" && <Chip tone="good" className="ml-2 align-middle">web</Chip>}
+          <span className="min-w-0 truncate">{r.nombre}</span>
+          {r.origen === "web" && <Chip tone="good" className="shrink-0 align-middle">web</Chip>}
           {!terminal && (
             <BadgeConfirmacion
               confirmada={r.confirmadaCliente}
@@ -309,7 +309,7 @@ function FilaReserva({
               onToggle={() => onEjecutar(() => marcarConfirmadaCliente(r.id, !r.confirmadaCliente))}
             />
           )}
-          {r.notas && <span className="ml-2 font-normal text-ink-soft">· {r.notas}</span>}
+          {r.notas && <span className="truncate font-normal text-ink-soft">· {r.notas}</span>}
         </b>
         <small className="flex items-center gap-2 text-xs text-ink-soft">
           <span className="flex items-center gap-1">
@@ -431,7 +431,7 @@ function BadgeConfirmacion({
       disabled={ocupado}
       title={confirmada ? "Confirmada por el cliente — clic para quitar" : "Marcar como confirmada por el cliente"}
       className={cn(
-        "ml-2 inline-flex cursor-pointer items-center rounded-full px-2.5 py-0.5 align-middle text-xs font-semibold transition disabled:opacity-50",
+        "inline-flex shrink-0 cursor-pointer items-center rounded-full px-2.5 py-0.5 align-middle text-xs font-semibold transition disabled:opacity-50",
         TONOS[tono],
       )}
     >
