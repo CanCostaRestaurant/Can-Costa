@@ -413,8 +413,22 @@ export function ComanderoComanda({ ticket, platos }: { ticket: TicketDetalle; pl
                 </span>
               )}
               <span className="text-[26px] leading-none">{p.emoji}</span>
-              <span className="mt-1 line-clamp-2 text-[13.5px] leading-tight font-bold">{p.nombre}</span>
+              <span className="mt-1 line-clamp-2 pr-9 text-[13.5px] leading-tight font-bold">{p.nombre}</span>
               <span className="font-display text-[12.5px] font-bold text-ink-soft">{eur(p.pvp ?? 0)}</span>
+              {n > 0 && (
+                // Deshacer un toque de más sin abrir la comanda: − en la tarjeta.
+                <span
+                  role="button"
+                  aria-label={`Quitar un ${p.nombre}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    ajustar(p.id, p.nombre, p.pvp ?? 0, -1);
+                  }}
+                  className="absolute right-2 bottom-2 grid size-9 cursor-pointer place-items-center rounded-full border-2 border-brand bg-card text-brand active:scale-90"
+                >
+                  <Minus className="size-4.5" />
+                </span>
+              )}
             </button>
           );
         })}
