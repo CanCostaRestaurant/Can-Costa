@@ -3,12 +3,12 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Banknote, CreditCard, Printer, Tablet, Users } from "lucide-react";
+import { Banknote, CreditCard, Flame, Printer, Tablet, Users } from "lucide-react";
 import { Chip, PageHead } from "@/components/ui";
 import { DatePicker } from "@/components/date-picker";
 import { Segmentado } from "@/components/segmentado";
 import { CifraAnimada } from "@/components/cifra-animada";
-import { type DesgloseDia, type VentaDia } from "@/lib/db/queries";
+import { type CocinaDia, type DesgloseDia, type VentaDia } from "@/lib/db/queries";
 import { cn, eur, pct } from "@/lib/utils";
 import { guardarVentaDia } from "./actions";
 
@@ -17,10 +17,12 @@ type Franja = "todo" | "mediodia" | "noche";
 export function VentasClient({
   desglose,
   historico,
+  cocina,
   hoy,
 }: {
   desglose: DesgloseDia;
   historico: VentaDia[];
+  cocina: CocinaDia;
   hoy: string;
 }) {
   const router = useRouter();
@@ -35,6 +37,7 @@ export function VentasClient({
   const [franja, setFranja] = useState<Franja>("todo");
   const f = d.franjas[franja];
   const hayEnFranja = f.numTickets > 0;
+  const co = cocina[franja]; // tiempos del pase (KDS) de esa franja
 
   function cambiarDia(dia: string) {
     router.push(dia === hoy ? "/ventas" : `/ventas?dia=${dia}`);
@@ -118,6 +121,34 @@ export function VentasClient({
           {hayEnFranja && f.totalDia > 0 ? pct((f.tarjeta / f.totalDia) * 100, 0) + " del total" : "—"}
         </Kpi>
       </div>
+
+      {/* Cocina: los tiempos del pase, cuando el KDS trabajó ese día */}
+      {co.pases > 0 && (
+        <div className="card mb-3.5 flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3.5">
+          <span className="flex items-center gap-2 text-[12.5px] font-semibold tracking-wider text-ink-soft uppercase">
+            <Flame className="size-4 text-brand" /> Cocina
+          </span>
+          <span className="text-[13.5px]">
+            <b className="font-display text-[16px] font-bold">{co.pases}</b>{" "}
+            <span className="text-ink-soft">{co.pases === 1 ? "pase" : "pases"}</span>
+          </span>
+          <span className="text-[13.5px]">
+            <b className="font-display text-[16px] font-bold">{co.platosEnviados}</b>{" "}
+            <span className="text-ink-soft">platos enviados</span>
+          </span>
+          {co.tiempoMedioMin !== null && (
+            <span className="text-[13.5px]">
+              <b className="font-display text-[16px] font-bold">{co.tiempoMedioMin}</b>{" "}
+              <span className="text-ink-soft">min de salida media</span>
+            </span>
+          )}
+          {co.peor && co.peor.min >= 15 && (
+            <span className="rounded-full bg-bad-soft px-3 py-1 text-[12.5px] font-semibold text-bad">
+              Peor pase: {co.peor.mesa} · {co.peor.min} min
+            </span>
+          )}
+        </div>
+      )}
 
       {hayTickets ? (
         !hayEnFranja ? (

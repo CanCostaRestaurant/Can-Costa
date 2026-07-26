@@ -1297,6 +1297,81 @@ export async function getDesgloseDia(fecha: string): Promise<DesgloseDia> {
   }
 }
 
+// ── Cocina: los tiempos del pase (KDS) agregados por franja ──────────────
+// De la tabla comandas: cuántos pases salieron, cuántos platos viajaron y
+// cuánto tardó cocina en marcarlos listos. Mismo corte 17:00 Madrid que el
+// desglose de ventas para que el filtro Mediodía/Noche cuente lo mismo.
+
+export type CocinaFranja = {
+  pases: number;
+  platosEnviados: number; // Σ unidades enviadas (los QUITAR no suman)
+  tiempoMedioMin: number | null; // media de salida (creada → lista)
+  peor: { mesa: string; pase: number; min: number } | null; // el pase más lento
+};
+export type CocinaDia = { todo: CocinaFranja; mediodia: CocinaFranja; noche: CocinaFranja };
+
+const COCINA_FRANJA_VACIA: CocinaFranja = { pases: 0, platosEnviados: 0, tiempoMedioMin: null, peor: null };
+
+export async function getCocinaDia(fecha: string): Promise<CocinaDia> {
+  const vacio: CocinaDia = { todo: COCINA_FRANJA_VACIA, mediodia: COCINA_FRANJA_VACIA, noche: COCINA_FRANJA_VACIA };
+  const db = getDb();
+  if (!db) return vacio;
+
+  try {
+    return await conPlazo(
+      (async (): Promise<CocinaDia> => {
+        const desde = new Date(fecha + "T00:00:00Z");
+        const hasta = new Date(desde.getTime() + 86_400_000);
+
+        const filas = await db
+          .select()
+          .from(schema.comandas)
+          .where(and(gte(schema.comandas.createdAt, desde), lt(schema.comandas.createdAt, hasta)));
+        if (filas.length === 0) return vacio;
+
+        const horaCorteMadrid = new Intl.DateTimeFormat("es-ES", {
+          hour: "2-digit",
+          hourCycle: "h23",
+          timeZone: "Europe/Madrid",
+        });
+        const esNoche = (c: (typeof filas)[number]) => parseInt(horaCorteMadrid.format(c.createdAt), 10) >= 17;
+
+        const agregar = (subset: typeof filas): CocinaFranja => {
+          if (subset.length === 0) return COCINA_FRANJA_VACIA;
+          let platos = 0;
+          let sumaMin = 0;
+          let conTiempo = 0;
+          let peor: CocinaFranja["peor"] = null;
+          for (const c of subset) {
+            for (const it of c.items) if (!it.quitar) platos += it.cantidad;
+            if (c.listaAt) {
+              const min = (c.listaAt.getTime() - c.createdAt.getTime()) / 60000;
+              sumaMin += min;
+              conTiempo++;
+              if (!peor || min > peor.min) peor = { mesa: c.mesaNombre, pase: c.pase, min: Math.round(min) };
+            }
+          }
+          return {
+            pases: subset.length,
+            platosEnviados: platos,
+            tiempoMedioMin: conTiempo > 0 ? Math.round((sumaMin / conTiempo) * 10) / 10 : null,
+            peor,
+          };
+        };
+
+        return {
+          todo: agregar(filas),
+          mediodia: agregar(filas.filter((c) => !esNoche(c))),
+          noche: agregar(filas.filter(esNoche)),
+        };
+      })(),
+    );
+  } catch (e) {
+    logFallo("getCocinaDia", e);
+    return vacio;
+  }
+}
+
 // ---------------------------------------------------------------------
 // Reservas (cover manager)
 // ---------------------------------------------------------------------
