@@ -1,7 +1,16 @@
+import type { Metadata } from "next";
 import { getMapaMesas, getPlatosTpv, getTicketDetalle } from "@/lib/db/queries";
 import { ComanderoComanda, ComanderoMesas } from "./comandero-client";
 
 export const dynamic = "force-dynamic";
+
+// PWA propia: instalar "Añadir a pantalla de inicio" DESDE esta página crea
+// la app "Comandero" (vertical, arranca aquí) — no la del TPV de tablet.
+export const metadata: Metadata = {
+  title: "Comandero · Can Costa",
+  manifest: "/manifest-comandero.webmanifest",
+  appleWebApp: { capable: true, title: "Comandero", statusBarStyle: "default" },
+};
 
 // COMANDERO: el TPV de bolsillo del camarero. Solo pasar pedidos — elegir
 // mesa, marcar platos y enviarlos a cocina. Cobrar, caja y facturas se quedan
