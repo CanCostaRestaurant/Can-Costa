@@ -5,7 +5,8 @@
 // bump de un toque con recuperación (Fresh) y ding cuando entra comanda.
 // Oscura y de letra grande: se lee a dos metros con las manos en la plancha.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCheck, Flame, RotateCcw, Volume2 } from "lucide-react";
+import Link from "next/link";
+import { CheckCheck, Flame, RotateCcw, Volume2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { estadoCocina, marcarLista, recuperarComanda, type ComandaCocina, type EstadoCocina } from "./actions";
 
@@ -128,18 +129,31 @@ export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
       .sort((a, b) => b[1] - a[1]);
   }, [pendientes]);
 
+  const relojHHMM = new Intl.DateTimeFormat("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Madrid",
+  }).format(ahora);
+
   return (
-    <section className="anim-in -m-1 flex min-h-[calc(100svh-120px)] flex-col overflow-hidden rounded-2xl bg-[#161210] text-[#F4EDE3] select-none">
+    // Modo kiosco: el KDS se adueña de TODA la pantalla (tapa sidebar y
+    // cabeceras) — es una pantalla colgada en cocina, no una página más.
+    <section className="fixed inset-0 z-50 flex flex-col bg-[#161210] text-[#F4EDE3] select-none">
       {/* ── Cabecera ── */}
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
         <div className="flex items-center gap-2.5">
           <Flame className="size-5 text-[#F26A3E]" />
           <h1 className="font-display text-lg font-bold tracking-tight">Cocina</h1>
-          <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[13px] font-bold tabular-nums">
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-0.5 font-display text-[14px] font-bold tabular-nums",
+              pendientes.length > 0 ? "bg-[#F26A3E] text-white" : "bg-white/10 text-white/70",
+            )}
+          >
             {pendientes.length}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           {error && (
             <span className="rounded-lg bg-[#C0392B]/25 px-3 py-1 text-[12.5px] font-semibold text-[#FF9C8A]">
               {error}
@@ -153,6 +167,14 @@ export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
               <Volume2 className="size-4" /> Activar sonido
             </button>
           )}
+          <span className="font-display text-[22px] font-bold text-white/85 tabular-nums">{relojHHMM}</span>
+          <Link
+            href="/"
+            title="Salir de cocina"
+            className="grid size-9 cursor-pointer place-items-center rounded-xl text-white/45 hover:bg-white/10 hover:text-white"
+          >
+            <X className="size-5" />
+          </Link>
         </div>
       </div>
 
@@ -233,7 +255,8 @@ export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
           )}
         </div>
 
-        {/* ── Carril derecho: All Day + recuperar ── */}
+        {/* ── Carril derecho: All Day + recuperar (solo si hay algo que contar) ── */}
+        {(allDay.length > 0 || listas.length > 0) && (
         <aside className="flex w-60 shrink-0 flex-col border-l border-white/10 max-md:hidden">
           <div className="flex-1 overflow-y-auto p-4">
             <h2 className="mb-2.5 text-[11.5px] font-bold tracking-[0.22em] text-white/45 uppercase">
@@ -275,6 +298,7 @@ export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
             </div>
           )}
         </aside>
+        )}
       </div>
     </section>
   );
