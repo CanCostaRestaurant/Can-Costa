@@ -10,7 +10,8 @@ import { COOKIE_SESION, verificarSesion, type RolUsuario } from "@/lib/auth";
 // /reservar = reservas web públicas (los clientes reservan sin login).
 // /web = la web pública del restaurante (marketing + carta + reservas).
 // /api/voz = tools del agente de voz telefónico (Bearer VOZ_SECRET/CRON_SECRET).
-const RUTAS_PUBLICAS = ["/login", "/api/salud", "/api/cron", "/api/webhooks", "/reservar", "/web", "/api/voz"];
+// /api/impresora = CloudPRNT: la térmica de cocina sondea con ?clave=IMPRESORA_SECRET.
+const RUTAS_PUBLICAS = ["/login", "/api/salud", "/api/cron", "/api/webhooks", "/reservar", "/web", "/api/voz", "/api/impresora"];
 
 function esPublica(pathname: string): boolean {
   return RUTAS_PUBLICAS.some((p) => pathname === p || pathname.startsWith(p + "/"));

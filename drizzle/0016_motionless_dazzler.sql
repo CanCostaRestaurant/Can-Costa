@@ -1,0 +1,1 @@
+ALTER TABLE "comandas" ADD COLUMN "impresa_at" timestamp with time zone;

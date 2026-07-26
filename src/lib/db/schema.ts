@@ -474,6 +474,9 @@ export const comandas = pgTable(
     estado: comandaEstadoEnum("estado").notNull().default("pendiente"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     listaAt: timestamp("lista_at", { withTimezone: true }),
+    // Impresora de cocina (CloudPRNT): null = aún no ha salido por papel.
+    // La impresora sondea /api/impresora/cocina y al confirmar se sella.
+    impresaAt: timestamp("impresa_at", { withTimezone: true }),
   },
   (t) => [index("comandas_estado_idx").on(t.estado), index("comandas_ticket_idx").on(t.ticketId)],
 );
