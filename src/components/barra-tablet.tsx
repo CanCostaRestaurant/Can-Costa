@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Coins, FileText, LogOut, Tablet, Wallet } from "lucide-react";
+import { Coins, FileText, Flame, LogOut, Tablet, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { cerrarSesion } from "@/app/login/actions";
 
@@ -15,6 +15,7 @@ export function BarraTablet({ nombre }: { nombre: string }) {
 
   const enlaces = [
     { href: "/tpv", etiqueta: "TPV", icono: Tablet },
+    { href: "/cocina", etiqueta: "Cocina", icono: Flame },
     { href: "/ventas", etiqueta: "Ventas", icono: Coins },
     { href: "/caja", etiqueta: "Caja", icono: Wallet },
     { href: "/facturacion", etiqueta: "Facturas", icono: FileText },

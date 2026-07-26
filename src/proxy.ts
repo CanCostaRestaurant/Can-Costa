@@ -25,11 +25,11 @@ const ACCESO: Record<RolUsuario, { permite: string[]; bloquea?: string[]; inicio
     permite: ["/", "/dashboard", "/ventas", "/caja", "/facturacion", "/documentos", "/banco", "/productos", "/proveedores", "/incidencias", "/conciliacion", "/personal"],
     inicio: "/dashboard",
   },
-  chef: { permite: ["/escandallos", "/productos"], inicio: "/escandallos" },
+  chef: { permite: ["/escandallos", "/productos", "/cocina"], inicio: "/escandallos" },
   // Modo tablet: cobrar (TPV), el día (Ventas), cerrar la caja (Caja) y
   // emitir factura a quien la pida (Facturación). Pero NO editar el plano
   // del local (/tpv/mesas): eso es configuración, no para camareros.
-  tpv: { permite: ["/tpv", "/ventas", "/caja", "/facturacion"], bloquea: ["/tpv/mesas"], inicio: "/tpv" },
+  tpv: { permite: ["/tpv", "/cocina", "/ventas", "/caja", "/facturacion"], bloquea: ["/tpv/mesas"], inicio: "/tpv" },
 };
 
 const empataPrefijo = (p: string, pathname: string) =>

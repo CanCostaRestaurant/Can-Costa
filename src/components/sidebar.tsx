@@ -9,6 +9,7 @@ import {
   ChartColumn,
   ChefHat,
   Coins,
+  Flame,
   Home,
   LogOut,
   ReceiptText,
@@ -39,8 +40,8 @@ const ETIQUETA_ROL: Record<RolUsuario, string> = {
 function visiblePara(rol: RolUsuario, href: string): boolean {
   if (rol === "admin") return true;
   if (rol === "documentos") return href === "/documentos";
-  if (rol === "chef") return href === "/escandallos" || href === "/productos";
-  if (rol === "tpv") return href === "/tpv" || href === "/ventas" || href === "/caja"; // (usa BarraTablet, esto es red de seguridad)
+  if (rol === "chef") return href === "/escandallos" || href === "/productos" || href === "/cocina";
+  if (rol === "tpv") return ["/tpv", "/cocina", "/ventas", "/caja"].includes(href); // (usa BarraTablet, esto es red de seguridad)
   // gestor: consulta de negocio y gastos, sin TPV/reservas/clientes
   return !["/tpv", "/reservas", "/clientes"].includes(href);
 }
@@ -60,6 +61,7 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
     titulo: "Gestión",
     items: [
       { href: "/tpv", label: "TPV", icon: Tablet },
+      { href: "/cocina", label: "Cocina", icon: Flame, chip: "nuevo" },
       { href: "/ventas", label: "Ventas", icon: Coins },
       { href: "/caja", label: "Caja", icon: Wallet },
       { href: "/reservas", label: "Reservas", icon: CalendarDays },

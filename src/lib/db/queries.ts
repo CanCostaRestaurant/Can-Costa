@@ -948,6 +948,8 @@ export type LineaTicket = {
   cantidad: number;
   precioUnitario: number;
   total: number;
+  enviado: number; // unidades ya enviadas a cocina
+  nota: string | null; // nota de cocina de la línea
 };
 
 export type PagoTicket = {
@@ -1005,6 +1007,8 @@ export async function getTicketDetalle(id: string): Promise<TicketDetalle | null
           cantidad: l.cantidad,
           precioUnitario: Number(l.precioUnitario),
           total: Number(l.total),
+          enviado: l.enviado,
+          nota: l.nota,
         }));
         const pagosMap: PagoTicket[] = pagos.map((p) => ({
           id: p.id,

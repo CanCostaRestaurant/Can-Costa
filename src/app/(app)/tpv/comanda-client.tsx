@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Banknote, CreditCard, Minus, Plus, Users, X } from "lucide-react";
+import { ArrowLeft, Banknote, CreditCard, Flame, Minus, NotebookPen, Plus, Users, X } from "lucide-react";
 import { type PlatoTpv, type TicketDetalle } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
 import { anularTicket, cambiarComensales, eliminarPago, registrarPago } from "./actions";
-import { fijarLinea } from "./comanda-actions";
+import { enviarACocina, fijarLinea, fijarNotaLinea } from "./comanda-actions";
 
 // Las bebidas del TPV son platos tipo "bebida" con PVP (getPlatosTpv). Se
 // gestionan en Productos → "Vender en el TPV" o en Escandallos → Nueva bebida.
@@ -20,6 +20,8 @@ type LineaLocal = {
   descripcion: string;
   precio: number;
   cantidad: number;
+  enviado: number; // unidades ya enviadas a cocina (para el badge del pase)
+  nota: string | null; // nota de cocina ("sin cebolla")
 };
 
 // Identidad estable de una línea: por plato, o por descripción+precio si es libre.
@@ -38,6 +40,8 @@ const aLocal = (l: TicketDetalle["lineas"][number]): LineaLocal => ({
   descripcion: l.descripcion,
   precio: l.precioUnitario,
   cantidad: l.cantidad,
+  enviado: l.enviado,
+  nota: l.nota,
 });
 
 export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; platos: PlatoTpv[] }) {
@@ -51,11 +55,26 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
   const [guardando, setGuardando] = useState(false);
 
   // ── Comanda: estado local (instantáneo) + sincronización en segundo plano ──
-  const [lineas, setLineas] = useState<LineaLocal[]>(() => ticket.lineas.map(aLocal));
+  // Las filas a cantidad 0 (borradas tras enviarse a cocina) no se pintan,
+  // pero sí viven en sincronizadoRef para que el motor no las resucite.
+  const [lineas, setLineas] = useState<LineaLocal[]>(() =>
+    ticket.lineas.map(aLocal).filter((l) => l.cantidad > 0),
+  );
   const lineasRef = useRef(lineas); // la última versión, para el sync
   const sincronizadoRef = useRef(
-    new Map(ticket.lineas.map((l) => [claveDe(l.platoId, l.descripcion, l.precioUnitario), aLocal(l)] as const)),
+    new Map(
+      ticket.lineas
+        .filter((l) => l.cantidad > 0)
+        .map((l) => [claveDe(l.platoId, l.descripcion, l.precioUnitario), aLocal(l)] as const),
+    ),
   );
+  // Cuánto lleva ya enviado cada línea (incluidas las que están a 0 en BD).
+  const enviadosRef = useRef(
+    new Map(ticket.lineas.map((l) => [claveDe(l.platoId, l.descripcion, l.precioUnitario), l.enviado] as const)),
+  );
+  const [enviando, setEnviando] = useState(false);
+  const [notaAbierta, setNotaAbierta] = useState<string | null>(null);
+  const [pases, setPases] = useState(0); // contador visual tras cada envío ok
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guardandoRef = useRef(false);
 
@@ -147,7 +166,7 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
     let next: LineaLocal[];
     if (i === -1) {
       if (delta <= 0) return;
-      next = [...prev, { key, platoId, descripcion, precio, cantidad: delta }];
+      next = [...prev, { key, platoId, descripcion, precio, cantidad: delta, enviado: 0, nota: null }];
     } else {
       const cantidad = prev[i].cantidad + delta;
       next = cantidad <= 0 ? prev.filter((_, j) => j !== i) : prev.map((l, j) => (j === i ? { ...l, cantidad } : l));
@@ -172,6 +191,65 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
     ajustar(null, desc, precio, 1);
     setLibreDesc("");
     setLibrePrecio("");
+  }
+
+  // ── Cocina ──────────────────────────────────────────────────────────────
+  const bebidaIds = useMemo(() => new Set(platos.filter((p) => p.tipo === "bebida").map((p) => p.id)), [platos]);
+
+  // Qué saldría en el próximo pase: nuevos (+) y quitares (−), sin bebidas.
+  const pendienteCocina = useMemo(() => {
+    let nuevos = 0;
+    let quitar = 0;
+    const vivos = new Map(lineas.map((l) => [l.key, l] as const));
+    for (const l of lineas) {
+      if (l.platoId && bebidaIds.has(l.platoId)) continue;
+      const env = enviadosRef.current.get(l.key) ?? 0;
+      if (l.cantidad > env) nuevos += l.cantidad - env;
+      else if (l.cantidad < env) quitar += env - l.cantidad;
+    }
+    for (const [key, env] of enviadosRef.current) {
+      if (env > 0 && !vivos.has(key)) quitar += env; // borrada del todo tras enviarse
+    }
+    return { nuevos, quitar, hay: nuevos > 0 || quitar > 0 };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineas, bebidaIds, pases]);
+
+  async function enviarCocina() {
+    if (enviando) return;
+    setError(null);
+    setEnviando(true);
+    try {
+      if (!(await flush())) return;
+      const res = await enviarACocina(ticket.id);
+      if (!res.ok) {
+        setError(res.error ?? "No se pudo enviar a cocina");
+        return;
+      }
+      // Consolidar en local lo que la BD ya consolidó: enviado = cantidad.
+      enviadosRef.current = new Map(
+        lineasRef.current.filter((l) => l.cantidad > 0).map((l) => [l.key, l.cantidad] as const),
+      );
+      setPases((p) => p + 1);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  // Nota de cocina de una línea: local al instante, BD al cerrar el campo.
+  function cambiarNota(key: string, nota: string) {
+    const next = lineasRef.current.map((l) => (l.key === key ? { ...l, nota: nota || null } : l));
+    lineasRef.current = next;
+    setLineas(next);
+  }
+
+  async function guardarNota(l: LineaLocal) {
+    if (!(await flush())) return;
+    const res = await fijarNotaLinea(
+      ticket.id,
+      l.platoId ? { platoId: l.platoId } : { descripcion: l.descripcion, precio: l.precio },
+      l.nota ?? "",
+    );
+    if (!res.ok) setError(res.error ?? "No se pudo guardar la nota");
   }
 
   // Antes de abrir el cobro: persistir líneas y refrescar para que el panel de
@@ -244,24 +322,55 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
               </p>
             )}
             {lineas.map((l) => (
-              <div key={l.key} className="flex items-center gap-2 border-b border-line px-3 py-2">
-                <button
-                  onClick={() => ajustar(l.platoId, l.descripcion, l.precio, -1)}
-                  className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line hover:bg-chip active:scale-95"
-                  aria-label={`Quitar ${l.descripcion}`}
-                >
-                  <Minus className="size-4" />
-                </button>
-                <b className="w-6 shrink-0 text-center font-display text-[15px]">{l.cantidad}</b>
-                <button
-                  onClick={() => ajustar(l.platoId, l.descripcion, l.precio, 1)}
-                  className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line hover:bg-chip active:scale-95"
-                  aria-label={`Añadir ${l.descripcion}`}
-                >
-                  <Plus className="size-4" />
-                </button>
-                <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">{l.descripcion}</span>
-                <span className="shrink-0 font-display text-[14.5px] font-bold">{eur(l.precio * l.cantidad)}</span>
+              <div key={l.key} className="border-b border-line px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => ajustar(l.platoId, l.descripcion, l.precio, -1)}
+                    className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line hover:bg-chip active:scale-95"
+                    aria-label={`Quitar ${l.descripcion}`}
+                  >
+                    <Minus className="size-4" />
+                  </button>
+                  <b className="w-6 shrink-0 text-center font-display text-[15px]">{l.cantidad}</b>
+                  <button
+                    onClick={() => ajustar(l.platoId, l.descripcion, l.precio, 1)}
+                    className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg border border-line hover:bg-chip active:scale-95"
+                    aria-label={`Añadir ${l.descripcion}`}
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                  <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">
+                    {l.descripcion}
+                    {l.nota && notaAbierta !== l.key && (
+                      <span className="block truncate text-[12px] font-semibold text-brand">→ {l.nota}</span>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => setNotaAbierta(notaAbierta === l.key ? null : l.key)}
+                    className={cn(
+                      "grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg transition-colors",
+                      l.nota || notaAbierta === l.key ? "bg-brand-soft text-brand" : "text-ink-soft hover:bg-chip",
+                    )}
+                    aria-label={`Nota de cocina para ${l.descripcion}`}
+                  >
+                    <NotebookPen className="size-4" />
+                  </button>
+                  <span className="shrink-0 font-display text-[14.5px] font-bold">{eur(l.precio * l.cantidad)}</span>
+                </div>
+                {notaAbierta === l.key && (
+                  <input
+                    autoFocus
+                    value={l.nota ?? ""}
+                    placeholder="Nota para cocina: sin cebolla, poco hecho…"
+                    onChange={(e) => cambiarNota(l.key, e.target.value)}
+                    onBlur={() => {
+                      setNotaAbierta(null);
+                      void guardarNota(lineasRef.current.find((x) => x.key === l.key) ?? l);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                    className="mt-1.5 w-full rounded-lg border border-brand/40 bg-brand-soft/40 px-3 py-1.5 text-[13px] outline-none focus:border-brand"
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -300,6 +409,23 @@ export function ComandaClient({ ticket, platos }: { ticket: TicketDetalle; plato
               </div>
             )}
 
+            <button
+              onClick={enviarCocina}
+              disabled={!pendienteCocina.hay || enviando}
+              className={cn(
+                "mb-2 flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl text-[15px] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-40",
+                pendienteCocina.quitar > 0 && pendienteCocina.nuevos === 0 ? "bg-bad" : "bg-brand",
+              )}
+            >
+              <Flame className="size-4.5" />
+              {enviando
+                ? "Enviando…"
+                : pendienteCocina.hay
+                  ? `Enviar a cocina${pendienteCocina.nuevos > 0 ? ` · ${pendienteCocina.nuevos} ${pendienteCocina.nuevos === 1 ? "plato" : "platos"}` : ""}${pendienteCocina.quitar > 0 ? ` · quitar ${pendienteCocina.quitar}` : ""}`
+                  : pases > 0
+                    ? "Cocina al día ✓"
+                    : "Enviar a cocina"}
+            </button>
             <button
               onClick={irACobrar}
               disabled={lineas.length === 0 || restante <= 0}

@@ -433,9 +433,49 @@ export const ticketLineas = pgTable(
     cantidad: integer("cantidad").notNull().default(1),
     precioUnitario: numeric("precio_unitario", { precision: 12, scale: 2 }).notNull(),
     total: numeric("total", { precision: 12, scale: 2 }).notNull(),
+    // Cocina: unidades ya enviadas (el delta cantidad-enviado es lo que saldrá
+    // en el próximo pase; si baja de lo enviado, cocina recibe un QUITAR).
+    // Una línea borrada con enviado>0 se conserva a cantidad 0 hasta avisar.
+    enviado: integer("enviado").notNull().default(0),
+    nota: text("nota"), // "sin cebolla", "poco hecho"… sale en rojo en cocina
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("ticket_lineas_ticket_idx").on(t.ticketId)],
+);
+
+// ---------------------------------------------------------------------
+// comandas  (los PASES que salen a cocina). Cada "Enviar a cocina" del TPV
+// crea una comanda con el snapshot inmutable de lo NUEVO desde el envío
+// anterior (delta), igual que facturas_venta congela sus líneas. La pantalla
+// de cocina (/cocina) las pinta en vivo y las va marcando como listas.
+// Las bebidas no viajan (son de barra).
+// ---------------------------------------------------------------------
+
+export const comandaEstadoEnum = pgEnum("comanda_estado", ["pendiente", "lista"]);
+
+export type ComandaItem = {
+  descripcion: string;
+  cantidad: number; // siempre positiva; con quitar=true significa "QUITAR n"
+  nota: string | null;
+  quitar?: boolean;
+};
+
+export const comandas = pgTable(
+  "comandas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticketId: uuid("ticket_id")
+      .notNull()
+      .references(() => tickets.id, { onDelete: "cascade" }),
+    mesaNombre: text("mesa_nombre").notNull(), // denormalizado: la tarjeta vive aunque la mesa cambie
+    pase: integer("pase").notNull(), // 1º, 2º… envío de este ticket
+    items: jsonb("items").$type<ComandaItem[]>().notNull(),
+    nota: text("nota"), // nota general del pase ("marchar con los primeros")
+    estado: comandaEstadoEnum("estado").notNull().default("pendiente"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    listaAt: timestamp("lista_at", { withTimezone: true }),
+  },
+  (t) => [index("comandas_estado_idx").on(t.estado), index("comandas_ticket_idx").on(t.ticketId)],
 );
 
 // ---------------------------------------------------------------------
