@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChartColumn, LayoutGrid, Lock, Map, Settings2, ShoppingBag, Users } from "lucide-react";
+import { ChartColumn, LayoutGrid, Lock, Map, Settings2, ShoppingBag, Smartphone, Users } from "lucide-react";
 import { PageHead } from "@/components/ui";
 import { type MapaMesasTpv, type MesaEstado } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
@@ -140,6 +140,21 @@ export function MapaClient({ mapa, esTablet = false }: { mapa: MapaMesasTpv; esT
           {error}
         </div>
       )}
+
+      {/* En un móvil, lo cómodo para pasar pedidos es el comandero de bolsillo */}
+      <Link
+        href="/tpv/comandero"
+        className="mb-4 flex items-center gap-3 rounded-card border-2 border-brand bg-brand-soft px-4 py-3 md:hidden"
+      >
+        <Smartphone className="size-5 shrink-0 text-brand" />
+        <span className="min-w-0 flex-1">
+          <b className="block text-[14px] font-bold">Modo comandero</b>
+          <span className="block text-[12px] leading-tight text-ink-soft">
+            Pasar pedidos desde el móvil, rápido y a lo grande
+          </span>
+        </span>
+        <span className="font-display shrink-0 text-[13px] font-bold text-brand">Abrir →</span>
+      </Link>
 
       {vista === "plano" && colocadas.length > 0 ? (
         <>

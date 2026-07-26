@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Coins, FileText, Flame, LogOut, Tablet, Wallet } from "lucide-react";
+import { Coins, FileText, Flame, LogOut, Smartphone, Tablet, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { cerrarSesion } from "@/app/login/actions";
 
@@ -13,7 +13,9 @@ import { cerrarSesion } from "@/app/login/actions";
 export function BarraTablet({ nombre }: { nombre: string }) {
   const pathname = usePathname();
 
+  // Comandero: el TPV de bolsillo — solo asoma en pantallas de móvil.
   const enlaces = [
+    { href: "/tpv/comandero", etiqueta: "Comandero", icono: Smartphone, soloMovil: true },
     { href: "/tpv", etiqueta: "TPV", icono: Tablet },
     { href: "/cocina", etiqueta: "Cocina", icono: Flame },
     { href: "/ventas", etiqueta: "Ventas", icono: Coins },
@@ -27,15 +29,18 @@ export function BarraTablet({ nombre }: { nombre: string }) {
         C
       </div>
 
-      <nav className="ml-2 flex gap-1.5">
-        {enlaces.map(({ href, etiqueta, icono: Icono }) => {
-          const activo = pathname === href || pathname.startsWith(href + "/");
+      <nav className="ml-2 flex min-w-0 gap-1.5 overflow-x-auto">
+        {enlaces.map(({ href, etiqueta, icono: Icono, soloMovil }) => {
+          // /tpv no debe marcarse activo cuando se está en el comandero.
+          const activo =
+            href === "/tpv" ? pathname === "/tpv" : pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex min-h-11 items-center gap-2 rounded-xl px-4 text-[14.5px] font-semibold transition-all active:scale-[0.97]",
+                "flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-[14.5px] font-semibold transition-all active:scale-[0.97] max-md:px-3",
+                soloMovil && "md:hidden",
                 activo ? "bg-ink text-white" : "text-ink-soft hover:bg-chip hover:text-ink",
               )}
             >
