@@ -1,12 +1,18 @@
 "use client";
 
-// KDS — la pantalla del pase, copiada de los grandes: tarjetas con semáforo
-// de tiempo (Square), "All Day" con el total agregado por plato (Toast),
-// bump de un toque con recuperación (Fresh) y ding cuando entra comanda.
-// Oscura y de letra grande: se lee a dos metros con las manos en la plancha.
+// KDS — la cola del pase, copiada de los grandes: tarjetas con semáforo de
+// tiempo (Square), "All Day" agregado por plato (Toast), bump de un toque con
+// recuperación (Fresh) y ding cuando entra comanda.
+//
+// DOS pieles para la misma cola:
+//  · KIOSCO (tablets de cocina, roles tpv/chef): oscuro, a pantalla completa,
+//    letra gigante — la tablet ES la pantalla de cocina.
+//  · CRM (admin/gestor en el PC): página normal clara, con su cabecera y sus
+//    tarjetas como el resto del panel; botón "Pantalla completa" opcional.
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCheck, Flame, RotateCcw, Volume2, X } from "lucide-react";
+import { CheckCheck, Expand, Flame, RotateCcw, Volume2, X } from "lucide-react";
+import { PageHead } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { estadoCocina, marcarLista, recuperarComanda, type ComandaCocina, type EstadoCocina } from "./actions";
 
@@ -25,16 +31,111 @@ const mmss = (desdeISO: string, ahora: number) => {
 };
 const minutosDe = (desdeISO: string, ahora: number) => (ahora - new Date(desdeISO).getTime()) / 60000;
 
-export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
+// ── La tarjeta de un pase (misma estructura en oscuro y en claro) ──────────
+function TarjetaComanda({
+  c,
+  ahora,
+  oscuro,
+  destacada,
+  onBump,
+}: {
+  c: ComandaCocina;
+  ahora: number;
+  oscuro: boolean;
+  destacada: boolean;
+  onBump: () => void;
+}) {
+  const t = tono(minutosDe(c.creadaAt, ahora));
+  return (
+    <button
+      onClick={onBump}
+      className={cn(
+        "flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 text-left transition-transform active:scale-[0.985]",
+        oscuro ? "bg-[#211B17]" : "bg-card shadow-(--shadow-lift)",
+        t.borde,
+        t.pulso && "animate-pulse",
+        destacada && "ring-4 ring-[#F26A3E]/60",
+      )}
+    >
+      <div className={cn("flex items-center justify-between gap-2 px-4 py-2.5", t.chip)}>
+        <b className={cn("font-display leading-none font-bold text-white", oscuro ? "text-[19px]" : "text-[16px]")}>
+          {c.mesa}
+        </b>
+        <span className="flex items-center gap-2 text-[13px] font-bold text-white/90">
+          <span className="rounded-full bg-black/25 px-2 py-0.5">{c.pase}º pase</span>
+          <span className="tabular-nums">{mmss(c.creadaAt, ahora)}</span>
+        </span>
+      </div>
+      <div className="flex-1 px-4 py-3">
+        {c.items.map((it, i) => (
+          <div key={i} className={cn("py-1", it.quitar && (oscuro ? "rounded-lg bg-[#C0392B]/20 px-2" : "rounded-lg bg-bad-soft px-2"))}>
+            <div className="flex items-baseline gap-2.5">
+              <b
+                className={cn(
+                  "font-display leading-tight font-bold tabular-nums",
+                  oscuro ? "text-[22px]" : "text-[17px]",
+                  it.quitar ? (oscuro ? "text-[#FF9C8A]" : "text-bad") : oscuro ? "text-[#F4B860]" : "text-brand",
+                )}
+              >
+                {it.quitar ? "−" : ""}
+                {it.cantidad}×
+              </b>
+              <span
+                className={cn(
+                  "leading-tight font-semibold",
+                  oscuro ? "text-[19px]" : "text-[15px]",
+                  it.quitar && cn("line-through decoration-2", oscuro ? "text-[#FF9C8A]" : "text-bad"),
+                )}
+              >
+                {it.quitar ? `QUITAR ${it.descripcion}` : it.descripcion}
+              </span>
+            </div>
+            {it.nota && (
+              <p
+                className={cn(
+                  "pl-10 leading-snug font-bold",
+                  oscuro ? "text-[15px] text-[#FF9C8A]" : "text-[13px] text-bad",
+                )}
+              >
+                → {it.nota}
+              </p>
+            )}
+          </div>
+        ))}
+        {c.nota && (
+          <p
+            className={cn(
+              "mt-2 rounded-lg px-2.5 py-1.5 font-bold",
+              oscuro ? "bg-[#B07C2E]/25 text-[14px] text-[#F4B860]" : "bg-warn-soft text-[12.5px] text-warn",
+            )}
+          >
+            {c.nota}
+          </p>
+        )}
+      </div>
+      <div
+        className={cn(
+          "border-t px-4 py-2 text-center text-[12px] font-bold tracking-[0.2em] uppercase",
+          oscuro ? "border-white/10 text-white/50" : "border-line text-ink-soft",
+        )}
+      >
+        Tocar cuando salga
+      </div>
+    </button>
+  );
+}
+
+export function CocinaClient({ inicial, kioscoInicial }: { inicial: EstadoCocina; kioscoInicial: boolean }) {
   const [pendientes, setPendientes] = useState<ComandaCocina[]>(inicial.pendientes);
   const [listas, setListas] = useState<ComandaCocina[]>(inicial.listas);
   const [ahora, setAhora] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(inicial.ok ? null : (inicial.error ?? null));
   const [conSonido, setConSonido] = useState(false);
+  const [kiosco, setKiosco] = useState(kioscoInicial);
 
   const idsRef = useRef(new Set(inicial.pendientes.map((c) => c.id)));
   const audioRef = useRef<AudioContext | null>(null);
-  const nuevasRef = useRef(new Set<string>()); // para el destello de entrada
+  const nuevasRef = useRef(new Set<string>());
 
   // Ding de dos notas (sin ficheros: WebAudio). Los navegadores exigen un
   // gesto del usuario antes de sonar: el botón 🔊 lo desbloquea una vez.
@@ -118,8 +219,7 @@ export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
     if (!res.ok) setError(res.error ?? "No se pudo recuperar");
   }
 
-  // "All Day" (Toast): total agregado por plato de TODO lo pendiente — lo que
-  // de verdad cuenta el parrillero. Los QUITAR restan.
+  // "All Day" (Toast): total agregado por plato de TODO lo pendiente.
   const allDay = useMemo(() => {
     const suma = new Map<string, number>();
     for (const c of pendientes)
@@ -129,6 +229,97 @@ export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
       .sort((a, b) => b[1] - a[1]);
   }, [pendientes]);
 
+  // ═══════════════════ Modo CRM: página normal del panel ═══════════════════
+  if (!kiosco) {
+    return (
+      <section className="anim-in">
+        <PageHead
+          titulo="Cocina"
+          subtitulo="La cola del pase en vivo — lo mismo que ve la tablet de cocina"
+          derecha={
+            <div className="flex items-center gap-2">
+              {!conSonido && (
+                <button
+                  onClick={activarSonido}
+                  className="card flex cursor-pointer items-center gap-2 rounded-full! px-4 py-2 text-[13.5px] font-semibold"
+                >
+                  <Volume2 className="size-4 text-ink-soft" /> Sonido
+                </button>
+              )}
+              <button
+                onClick={() => setKiosco(true)}
+                className="flex cursor-pointer items-center gap-2 rounded-full bg-ink px-4 py-2 text-[13.5px] font-semibold text-white transition-colors hover:bg-black"
+              >
+                <Expand className="size-4" /> Pantalla completa
+              </button>
+            </div>
+          }
+        />
+
+        {error && (
+          <div className="mb-3.5 rounded-[14px] bg-bad-soft px-4 py-3 text-[13.5px] font-semibold text-bad">
+            {error}
+          </div>
+        )}
+
+        {allDay.length > 0 && (
+          <div className="mb-3.5 flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[11.5px] font-bold tracking-[0.18em] text-ink-soft uppercase">En marcha</span>
+            {allDay.map(([desc, n]) => (
+              <span key={desc} className="rounded-full border border-line bg-card px-3 py-1 text-[13px] font-semibold">
+                <b className="font-display text-brand">{n}×</b> {desc}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {pendientes.length === 0 ? (
+          <div className="card mb-3.5 flex items-center gap-3 px-5 py-6">
+            <CheckCheck className="size-6 shrink-0 text-good" />
+            <div>
+              <b className="block text-[14.5px] font-bold">Todo al día</b>
+              <span className="text-[13px] text-ink-soft">
+                Cuando sala envíe un pase aparecerá aquí en vivo (y en la tablet de cocina).
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-3.5 grid grid-cols-3 gap-3.5 max-xl:grid-cols-2 max-md:grid-cols-1">
+            {pendientes.map((c) => (
+              <TarjetaComanda
+                key={c.id}
+                c={c}
+                ahora={ahora}
+                oscuro={false}
+                destacada={nuevasRef.current.has(c.id)}
+                onBump={() => bump(c)}
+              />
+            ))}
+          </div>
+        )}
+
+        {listas.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[11.5px] font-bold tracking-[0.18em] text-ink-soft uppercase">
+              Listas hace nada
+            </span>
+            {listas.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => recuperar(c)}
+                title="Recuperar (deshacer)"
+                className="flex cursor-pointer items-center gap-1.5 rounded-full border border-line bg-card px-3 py-1 text-[12.5px] font-semibold text-ink-soft hover:border-brand hover:text-ink"
+              >
+                <RotateCcw className="size-3" /> {c.mesa} · {c.pase}º
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  // ═══════════ Modo KIOSCO: la tablet de cocina, pantalla completa ═════════
   const relojHHMM = new Intl.DateTimeFormat("es-ES", {
     hour: "2-digit",
     minute: "2-digit",
@@ -136,8 +327,6 @@ export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
   }).format(ahora);
 
   return (
-    // Modo kiosco: el KDS se adueña de TODA la pantalla (tapa sidebar y
-    // cabeceras) — es una pantalla colgada en cocina, no una página más.
     <section className="fixed inset-0 z-50 flex flex-col bg-[#161210] text-[#F4EDE3] select-none">
       {/* ── Cabecera ── */}
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
@@ -168,13 +357,25 @@ export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
             </button>
           )}
           <span className="font-display text-[22px] font-bold text-white/85 tabular-nums">{relojHHMM}</span>
-          <Link
-            href="/"
-            title="Salir de cocina"
-            className="grid size-9 cursor-pointer place-items-center rounded-xl text-white/45 hover:bg-white/10 hover:text-white"
-          >
-            <X className="size-5" />
-          </Link>
+          {kioscoInicial ? (
+            // En la tablet de cocina, salir = volver a su inicio (según rol).
+            <Link
+              href="/"
+              title="Salir de cocina"
+              className="grid size-9 cursor-pointer place-items-center rounded-xl text-white/45 hover:bg-white/10 hover:text-white"
+            >
+              <X className="size-5" />
+            </Link>
+          ) : (
+            // Desde el CRM, salir = volver a la página normal del panel.
+            <button
+              onClick={() => setKiosco(false)}
+              title="Salir de pantalla completa"
+              className="grid size-9 cursor-pointer place-items-center rounded-xl text-white/45 hover:bg-white/10 hover:text-white"
+            >
+              <X className="size-5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -191,113 +392,61 @@ export function CocinaClient({ inicial }: { inicial: EstadoCocina }) {
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3 max-xl:grid-cols-2 max-md:grid-cols-1">
-              {pendientes.map((c) => {
-                const min = minutosDe(c.creadaAt, ahora);
-                const t = tono(min);
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => bump(c)}
-                    className={cn(
-                      "flex cursor-pointer flex-col overflow-hidden rounded-2xl border-2 bg-[#211B17] text-left transition-transform active:scale-[0.985]",
-                      t.borde,
-                      t.pulso && "animate-pulse",
-                      nuevasRef.current.has(c.id) && "ring-4 ring-[#F26A3E]/60",
-                    )}
-                  >
-                    <div className={cn("flex items-center justify-between gap-2 px-4 py-2.5", t.chip)}>
-                      <b className="font-display text-[19px] leading-none font-bold text-white">{c.mesa}</b>
-                      <span className="flex items-center gap-2 text-[13px] font-bold text-white/90">
-                        <span className="rounded-full bg-black/25 px-2 py-0.5">{c.pase}º pase</span>
-                        <span className="tabular-nums">{mmss(c.creadaAt, ahora)}</span>
-                      </span>
-                    </div>
-                    <div className="flex-1 px-4 py-3">
-                      {c.items.map((it, i) => (
-                        <div key={i} className={cn("py-1", it.quitar && "rounded-lg bg-[#C0392B]/20 px-2")}>
-                          <div className="flex items-baseline gap-2.5">
-                            <b
-                              className={cn(
-                                "font-display text-[22px] leading-tight font-bold tabular-nums",
-                                it.quitar ? "text-[#FF9C8A]" : "text-[#F4B860]",
-                              )}
-                            >
-                              {it.quitar ? "−" : ""}
-                              {it.cantidad}×
-                            </b>
-                            <span
-                              className={cn(
-                                "text-[19px] leading-tight font-semibold",
-                                it.quitar && "text-[#FF9C8A] line-through decoration-2",
-                              )}
-                            >
-                              {it.quitar ? `QUITAR ${it.descripcion}` : it.descripcion}
-                            </span>
-                          </div>
-                          {it.nota && (
-                            <p className="pl-10 text-[15px] leading-snug font-bold text-[#FF9C8A]">→ {it.nota}</p>
-                          )}
-                        </div>
-                      ))}
-                      {c.nota && (
-                        <p className="mt-2 rounded-lg bg-[#B07C2E]/25 px-2.5 py-1.5 text-[14px] font-bold text-[#F4B860]">
-                          {c.nota}
-                        </p>
-                      )}
-                    </div>
-                    <div className="border-t border-white/10 px-4 py-2 text-center text-[12.5px] font-bold tracking-[0.2em] text-white/50 uppercase">
-                      Tocar cuando salga
-                    </div>
-                  </button>
-                );
-              })}
+              {pendientes.map((c) => (
+                <TarjetaComanda
+                  key={c.id}
+                  c={c}
+                  ahora={ahora}
+                  oscuro
+                  destacada={nuevasRef.current.has(c.id)}
+                  onBump={() => bump(c)}
+                />
+              ))}
             </div>
           )}
         </div>
 
-        {/* ── Carril derecho: All Day + recuperar (solo si hay algo que contar) ── */}
+        {/* ── Carril derecho: All Day + recuperar (solo si hay algo) ── */}
         {(allDay.length > 0 || listas.length > 0) && (
-        <aside className="flex w-60 shrink-0 flex-col border-l border-white/10 max-md:hidden">
-          <div className="flex-1 overflow-y-auto p-4">
-            <h2 className="mb-2.5 text-[11.5px] font-bold tracking-[0.22em] text-white/45 uppercase">
-              En marcha
-            </h2>
-            {allDay.length === 0 ? (
-              <p className="text-[13px] text-white/35">Nada pendiente</p>
-            ) : (
-              allDay.map(([desc, n]) => (
-                <div key={desc} className="flex items-baseline gap-2 py-1">
-                  <b className="font-display w-9 text-right text-[18px] font-bold text-[#F4B860] tabular-nums">
-                    {n}×
-                  </b>
-                  <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-white/85">{desc}</span>
-                </div>
-              ))
-            )}
-          </div>
-          {listas.length > 0 && (
-            <div className="border-t border-white/10 p-4">
-              <h2 className="mb-2 text-[11.5px] font-bold tracking-[0.22em] text-white/45 uppercase">
-                Listas hace nada
-              </h2>
-              {listas.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => recuperar(c)}
-                  className="mb-1.5 flex w-full cursor-pointer items-center gap-2 rounded-xl border border-white/12 px-3 py-2 text-left hover:bg-white/8"
-                >
-                  <RotateCcw className="size-3.5 shrink-0 text-white/40" />
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white/70">
-                    {c.mesa} · {c.pase}º
-                  </span>
-                  <span className="shrink-0 text-[11.5px] text-white/40 tabular-nums">
-                    {c.listaAt ? mmss(c.listaAt, ahora) : ""}
-                  </span>
-                </button>
-              ))}
+          <aside className="flex w-60 shrink-0 flex-col border-l border-white/10 max-md:hidden">
+            <div className="flex-1 overflow-y-auto p-4">
+              <h2 className="mb-2.5 text-[11.5px] font-bold tracking-[0.22em] text-white/45 uppercase">En marcha</h2>
+              {allDay.length === 0 ? (
+                <p className="text-[13px] text-white/35">Nada pendiente</p>
+              ) : (
+                allDay.map(([desc, n]) => (
+                  <div key={desc} className="flex items-baseline gap-2 py-1">
+                    <b className="font-display w-9 text-right text-[18px] font-bold text-[#F4B860] tabular-nums">
+                      {n}×
+                    </b>
+                    <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold text-white/85">{desc}</span>
+                  </div>
+                ))
+              )}
             </div>
-          )}
-        </aside>
+            {listas.length > 0 && (
+              <div className="border-t border-white/10 p-4">
+                <h2 className="mb-2 text-[11.5px] font-bold tracking-[0.22em] text-white/45 uppercase">
+                  Listas hace nada
+                </h2>
+                {listas.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => recuperar(c)}
+                    className="mb-1.5 flex w-full cursor-pointer items-center gap-2 rounded-xl border border-white/12 px-3 py-2 text-left hover:bg-white/8"
+                  >
+                    <RotateCcw className="size-3.5 shrink-0 text-white/40" />
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white/70">
+                      {c.mesa} · {c.pase}º
+                    </span>
+                    <span className="shrink-0 text-[11.5px] text-white/40 tabular-nums">
+                      {c.listaAt ? mmss(c.listaAt, ahora) : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </aside>
         )}
       </div>
     </section>
