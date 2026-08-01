@@ -49,12 +49,18 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
   // Food cost en vivo mientras se teclea el PVP
   const pvpActual = parseFloat(pvpTexto.replace(",", ".")) || null;
   const foodCost = pvpActual && pvpActual > 0 ? (plato.coste / pvpActual) * 100 : null;
+  // Objetivo de la barra: si el plato fija un "margen esperado", la rayita se
+  // mueve a su food cost equivalente (margen 30% ⇒ food cost ≤ 70%, porque
+  // margen = 100 − food cost). Sin margen fijado, el 33% clásico de carta.
+  const margenObj = parseFloat(margenObjTexto.replace(",", "."));
+  const objetivoFc =
+    Number.isFinite(margenObj) && margenObj > 0 && margenObj < 100 ? 100 - margenObj : OBJETIVO;
   const colorFc =
     foodCost === null
       ? "var(--color-chip)"
-      : foodCost <= OBJETIVO
+      : foodCost <= objetivoFc
         ? "var(--color-good)"
-        : foodCost <= 38
+        : foodCost <= objetivoFc + 5
           ? "var(--color-warn)"
           : "var(--color-bad)";
 
@@ -485,16 +491,16 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
                 style={{ width: `${Math.min(foodCost ?? 0, 100)}%`, background: colorFc }}
               />
               <div
-                className="absolute -top-1 -bottom-1 w-0.5 rounded-sm bg-ink"
-                style={{ left: `${OBJETIVO}%` }}
-                title={`Objetivo ${OBJETIVO}%`}
+                className="absolute -top-1 -bottom-1 w-0.5 rounded-sm bg-ink transition-all duration-300"
+                style={{ left: `${objetivoFc}%` }}
+                title={`Objetivo ${pct(objetivoFc, 0)}`}
               />
             </div>
             <div className="mt-2.5 flex items-baseline justify-between">
               <span className="font-display text-[26px] font-bold">
                 {foodCost !== null ? pct(foodCost) : "—"}
               </span>
-              <small className="text-xs text-ink-soft">objetivo ≤ {OBJETIVO}%</small>
+              <small className="text-xs text-ink-soft">objetivo ≤ {pct(objetivoFc, 0)}</small>
             </div>
           </div>
 
@@ -504,8 +510,8 @@ export function EscandalloEditor({ plato, productos }: { plato: PlatoDetalle; pr
               <b className="font-display font-bold">{pvpActual !== null ? eur(pvpActual - plato.coste) : "—"}</b>
             </div>
             <div className="flex justify-between">
-              <span className="text-ink-soft">PVP para food cost {OBJETIVO}%</span>
-              <b className="font-display font-bold">{eur(plato.coste / (OBJETIVO / 100))}</b>
+              <span className="text-ink-soft">PVP para food cost {pct(objetivoFc, 0)}</span>
+              <b className="font-display font-bold">{eur(plato.coste / (objetivoFc / 100))}</b>
             </div>
           </div>
 
