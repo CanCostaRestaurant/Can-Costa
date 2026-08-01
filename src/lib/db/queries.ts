@@ -3001,13 +3001,17 @@ export type ProductoInventario = {
   nombre: string;
   familia: "pescado" | "carne" | "fruta-verdura" | "seco" | "bebida" | "otros";
   unidad: string;
+  proveedor: string | null; // para agrupar la lista de compra
   stock: number | null; // null = nunca inicializado (ni recuento ni movimientos)
   valor: number | null; // stock × último precio de compra
   consumoDia: number; // media diaria de salidas por ventas (últimos 14 días)
   cobertura: number | null; // días de stock al ritmo actual (null = sin ritmo)
   ultimaEntrada: string | null; // "4 jul"
   ultimoRecuento: { fecha: string; desviacion: number } | null;
+  diasSinRecuento: number | null; // null = sin recuento en los últimos 90 días
+  tocaRecuento: boolean; // controlado pero sin contar hace >14 días (o nunca)
   desviacion30d: number; // Σ desviaciones de recuentos en 30 días (±)
+  sugerenciaPedido: number; // cantidad a pedir para cubrir 7 días (0 = nada)
   estado: EstadoStock;
 };
 
@@ -3016,12 +3020,15 @@ export type Inventario = {
   valorTotal: number;
   enAlerta: number; // agotado + crítico + bajo
   sinIniciar: number;
+  tocaRecuento: number; // controlados con recuento caducado (>14 días o nunca)
 };
 
 const DIAS_CONSUMO = 14; // ventana para la media de consumo diario
+const DIAS_RECUENTO_CADUCADO = 14; // a partir de aquí "toca recuento"
+const DIAS_COBERTURA_PEDIDO = 7; // la lista de compra apunta a cubrir una semana
 
 export async function getInventario(): Promise<Inventario> {
-  const vacio: Inventario = { productos: [], valorTotal: 0, enAlerta: 0, sinIniciar: 0 };
+  const vacio: Inventario = { productos: [], valorTotal: 0, enAlerta: 0, sinIniciar: 0, tocaRecuento: 0 };
   const db = getDb();
   if (!db) return vacio;
 
@@ -3032,7 +3039,12 @@ export async function getInventario(): Promise<Inventario> {
         const desde30d = new Date(Date.now() - 30 * 86_400_000);
 
         const [productos, ventas, entradas, recuentos, primeraVentaFila] = await Promise.all([
-          db.select().from(schema.productos).where(eq(schema.productos.activo, true)).orderBy(asc(schema.productos.nombre)),
+          db
+            .select({ producto: schema.productos, proveedorNombre: schema.proveedores.nombre })
+            .from(schema.productos)
+            .leftJoin(schema.proveedores, eq(schema.productos.proveedorId, schema.proveedores.id))
+            .where(eq(schema.productos.activo, true))
+            .orderBy(asc(schema.productos.nombre)),
           // Consumo por ventas de la ventana (los movimientos 'venta' son negativos).
           db
             .select({
@@ -3071,7 +3083,7 @@ export async function getInventario(): Promise<Inventario> {
 
         const consumoDe = new Map(ventas.map((v) => [v.productoId, Number(v.total)]));
         const entradaDe = new Map(entradas.map((e) => [e.productoId, e.ultima]));
-        const ultimoRecuentoDe = new Map<string, { fecha: string; desviacion: number }>();
+        const ultimoRecuentoDe = new Map<string, { fecha: string; desviacion: number; ms: number }>();
         const desv30dDe = new Map<string, number>();
         const diaMadrid = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Madrid" });
         for (const r of recuentos) {
@@ -3079,6 +3091,7 @@ export async function getInventario(): Promise<Inventario> {
             ultimoRecuentoDe.set(r.productoId, {
               fecha: fechaLegible(diaMadrid.format(r.createdAt)),
               desviacion: Number(r.desviacion),
+              ms: r.createdAt.getTime(),
             });
           }
           if (r.createdAt >= desde30d) {
@@ -3086,7 +3099,7 @@ export async function getInventario(): Promise<Inventario> {
           }
         }
 
-        const filas: ProductoInventario[] = productos.map((p) => {
+        const filas: ProductoInventario[] = productos.map(({ producto: p, proveedorNombre }) => {
           const stock = p.stock !== null ? Number(p.stock) : null;
           const consumoDia = (consumoDe.get(p.id) ?? 0) / diasVentana;
           const cobertura = stock !== null && consumoDia > 0 ? stock / consumoDia : null;
@@ -3101,18 +3114,31 @@ export async function getInventario(): Promise<Inventario> {
                   : cobertura !== null && cobertura <= 5
                     ? "bajo"
                     : "ok";
+          const rec = ultimoRecuentoDe.get(p.id) ?? null;
+          const diasSinRecuento = rec ? Math.floor((Date.now() - rec.ms) / 86_400_000) : null;
+          const enAlerta = estado === "agotado" || estado === "critico" || estado === "bajo";
+          // Lista de compra: lo que falta para cubrir una semana al ritmo actual.
+          const sugerenciaPedido =
+            enAlerta && consumoDia > 0 && stock !== null
+              ? Math.max(0, Math.ceil((consumoDia * DIAS_COBERTURA_PEDIDO - stock) * 10) / 10)
+              : 0;
           return {
             id: p.id,
             nombre: p.nombre,
             familia: p.familia,
             unidad: p.unidad,
+            proveedor: proveedorNombre,
             stock,
             valor: stock !== null && stock > 0 && precio !== null ? stock * precio : null,
             consumoDia,
             cobertura,
             ultimaEntrada: entradaDe.has(p.id) ? fechaLegible(entradaDe.get(p.id)!) : null,
-            ultimoRecuento: ultimoRecuentoDe.get(p.id) ?? null,
+            ultimoRecuento: rec ? { fecha: rec.fecha, desviacion: rec.desviacion } : null,
+            diasSinRecuento,
+            tocaRecuento:
+              stock !== null && (diasSinRecuento === null || diasSinRecuento > DIAS_RECUENTO_CADUCADO),
             desviacion30d: desv30dDe.get(p.id) ?? 0,
+            sugerenciaPedido,
             estado,
           };
         });
@@ -3122,6 +3148,7 @@ export async function getInventario(): Promise<Inventario> {
           valorTotal: filas.reduce((a, f) => a + (f.valor ?? 0), 0),
           enAlerta: filas.filter((f) => f.estado === "agotado" || f.estado === "critico" || f.estado === "bajo").length,
           sinIniciar: filas.filter((f) => f.estado === "sin_iniciar").length,
+          tocaRecuento: filas.filter((f) => f.tocaRecuento).length,
         };
       })(),
       12_000,

@@ -647,7 +647,7 @@ export const precios = pgTable(
 // El stock actual vive denormalizado en productos.stock (NULL = sin inicializar).
 // ---------------------------------------------------------------------
 
-export const stockMovTipoEnum = pgEnum("stock_mov_tipo", ["entrada", "venta", "ajuste"]);
+export const stockMovTipoEnum = pgEnum("stock_mov_tipo", ["entrada", "venta", "ajuste", "merma"]);
 
 export const stockRecuentos = pgTable(
   "stock_recuentos",

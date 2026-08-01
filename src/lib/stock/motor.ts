@@ -19,8 +19,8 @@ type Db = NonNullable<ReturnType<typeof getDb>>;
 
 type Movimiento = {
   productoId: string;
-  tipo: "entrada" | "venta" | "ajuste";
-  cantidad: number; // + entrada, − venta, ± ajuste
+  tipo: "entrada" | "venta" | "ajuste" | "merma";
+  cantidad: number; // + entrada, − venta/merma, ± ajuste
   facturaId?: string;
   ticketId?: string;
   recuentoId?: string;
@@ -274,4 +274,23 @@ export async function recontarProducto(
 
   if (!resultado) return { ok: false, desviacion: 0, error: "Producto no encontrado" };
   return { ok: true, desviacion: resultado.desviacion };
+}
+
+// ── MERMA manual: "se cayó una caja", "se pasó de fecha"… ───────────────────
+// Movimiento negativo directo con su motivo, sin esperar al recuento. Usa la
+// misma sentencia atómica que el resto de movimientos.
+
+export async function apuntarMermaProducto(
+  db: Db,
+  productoId: string,
+  cantidad: number,
+  motivo: string | null,
+  quien: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!Number.isFinite(cantidad) || cantidad <= 0) return { ok: false, error: "Cantidad no válida" };
+  const nota = [motivo?.trim() || "merma", quien ? `(${quien})` : null].filter(Boolean).join(" ");
+  const aplicados = await aplicarMovimientos(db, [
+    { productoId, tipo: "merma", cantidad: -cantidad, nota },
+  ]);
+  return aplicados > 0 ? { ok: true } : { ok: false, error: "No se pudo apuntar la merma" };
 }
