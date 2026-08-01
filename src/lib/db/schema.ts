@@ -110,6 +110,9 @@ export const productos = pgTable(
     ultimoPrecio: numeric("ultimo_precio", { precision: 12, scale: 4 }),
     ultimaCompra: date("ultima_compra"),
     precioPactado: numeric("precio_pactado", { precision: 12, scale: 4 }), // tarifa acordada con el proveedor; null = usar referencia
+    // Stock teórico actual en la unidad del producto (NULL = nunca inicializado:
+    // ni recuento ni movimientos). Lo mueven entradas/ventas/ajustes (motor stock).
+    stock: numeric("stock", { precision: 14, scale: 3 }),
     activo: boolean("activo").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -632,4 +635,55 @@ export const precios = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("precios_producto_fecha_idx").on(t.productoId, t.fecha)],
+);
+
+// ---------------------------------------------------------------------
+// STOCK (inventario teórico + desviaciones)
+//   - stock_movimientos: libro mayor. 'entrada' (+, al validar factura/albarán),
+//     'venta' (−, al cobrar un ticket, vía escandallo) y 'ajuste' (±, recuento).
+//   - stock_recuentos: cada recuento físico guarda teórico vs contado → la
+//     DESVIACIÓN (mermas, raciones generosas, pérdidas…). El ajuste deja el
+//     teórico igualado a lo contado.
+// El stock actual vive denormalizado en productos.stock (NULL = sin inicializar).
+// ---------------------------------------------------------------------
+
+export const stockMovTipoEnum = pgEnum("stock_mov_tipo", ["entrada", "venta", "ajuste"]);
+
+export const stockRecuentos = pgTable(
+  "stock_recuentos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    productoId: uuid("producto_id")
+      .notNull()
+      .references(() => productos.id, { onDelete: "cascade" }),
+    teorico: numeric("teorico", { precision: 14, scale: 3 }).notNull(),
+    contado: numeric("contado", { precision: 14, scale: 3 }).notNull(),
+    desviacion: numeric("desviacion", { precision: 14, scale: 3 }).notNull(), // contado − teórico
+    contadoPor: text("contado_por"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("stock_recuentos_producto_idx").on(t.productoId, t.createdAt)],
+);
+
+export const stockMovimientos = pgTable(
+  "stock_movimientos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    productoId: uuid("producto_id")
+      .notNull()
+      .references(() => productos.id, { onDelete: "cascade" }),
+    tipo: stockMovTipoEnum("tipo").notNull(),
+    cantidad: numeric("cantidad", { precision: 14, scale: 3 }).notNull(), // + entrada, − venta, ± ajuste
+    facturaId: uuid("factura_id").references(() => facturas.id, { onDelete: "set null" }),
+    ticketId: uuid("ticket_id").references(() => tickets.id, { onDelete: "set null" }),
+    recuentoId: uuid("recuento_id").references(() => stockRecuentos.id, { onDelete: "set null" }),
+    nota: text("nota"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("stock_mov_producto_idx").on(t.productoId, t.createdAt),
+    index("stock_mov_created_idx").on(t.createdAt),
+    // Los índices únicos parciales anti-duplicado (venta por ticket, entrada por
+    // factura) viven en la migración SQL (Drizzle no expresa índices parciales aquí).
+  ],
 );

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Apple,
+  Boxes,
   BookUser,
   CalendarDays,
   ChartColumn,
@@ -40,7 +41,7 @@ const ETIQUETA_ROL: Record<RolUsuario, string> = {
 function visiblePara(rol: RolUsuario, href: string): boolean {
   if (rol === "admin") return true;
   if (rol === "documentos") return href === "/documentos";
-  if (rol === "chef") return href === "/escandallos" || href === "/productos" || href === "/cocina";
+  if (rol === "chef") return ["/escandallos", "/productos", "/inventario", "/cocina"].includes(href);
   if (rol === "tpv") return ["/tpv", "/cocina", "/ventas", "/caja"].includes(href); // (usa BarraTablet, esto es red de seguridad)
   // gestor: consulta de negocio y gastos, sin TPV/reservas/clientes
   return !["/tpv", "/reservas", "/clientes"].includes(href);
@@ -80,6 +81,7 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
     titulo: "Compras",
     items: [
       { href: "/productos", label: "Productos", icon: Apple },
+      { href: "/inventario", label: "Inventario", icon: Boxes, chip: "nuevo" },
       { href: "/proveedores", label: "Proveedores", icon: Truck },
       { href: "/incidencias", label: "Incidencias", icon: TriangleAlert },
     ],

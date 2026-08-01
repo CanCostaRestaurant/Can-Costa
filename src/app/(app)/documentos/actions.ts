@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
 import { leerBuzon } from "@/lib/correo/leer-buzon";
 import { procesarBufferDocumento, TAMANO_MAXIMO, TIPOS_SOPORTADOS } from "@/lib/documentos/procesar";
+import { registrarEntradaStock } from "@/lib/stock/motor";
 
 const CATEGORIAS_GASTO = [
   "materia_prima",
@@ -240,6 +241,17 @@ export async function validarFactura(facturaId: string): Promise<{ ok: boolean; 
       }),
       15_000, // transacción con varias sentencias
     );
+
+    // Stock: suma la mercancía comprada (fuera de la transacción de precios,
+    // best-effort e idempotente por factura+producto). Solo cuenta el documento
+    // que el proveedor usa como fuente (albarán O factura), para no duplicar.
+    try {
+      const res = await registrarEntradaStock(db, facturaId);
+      if (res.aplicados > 0) revalidatePath("/inventario");
+    } catch (e) {
+      console.error("[validarFactura] stock no sumado:", e instanceof Error ? e.message : e);
+      resetDb(); // socket posiblemente zombi: no envenenar lo siguiente
+    }
   } catch (e) {
     console.error("[validarFactura] falló:", e instanceof Error ? e.message : e);
     resetDb();

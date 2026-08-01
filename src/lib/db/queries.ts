@@ -2989,3 +2989,145 @@ export async function getCierresHistorico(limite = 30): Promise<CierreHistorico[
     return [];
   }
 }
+
+// ---------------------------------------------------------------------
+// Inventario (stock teórico + desviaciones)
+// ---------------------------------------------------------------------
+
+export type EstadoStock = "sin_iniciar" | "agotado" | "critico" | "bajo" | "ok";
+
+export type ProductoInventario = {
+  id: string;
+  nombre: string;
+  familia: "pescado" | "carne" | "fruta-verdura" | "seco" | "bebida" | "otros";
+  unidad: string;
+  stock: number | null; // null = nunca inicializado (ni recuento ni movimientos)
+  valor: number | null; // stock × último precio de compra
+  consumoDia: number; // media diaria de salidas por ventas (últimos 14 días)
+  cobertura: number | null; // días de stock al ritmo actual (null = sin ritmo)
+  ultimaEntrada: string | null; // "4 jul"
+  ultimoRecuento: { fecha: string; desviacion: number } | null;
+  desviacion30d: number; // Σ desviaciones de recuentos en 30 días (±)
+  estado: EstadoStock;
+};
+
+export type Inventario = {
+  productos: ProductoInventario[];
+  valorTotal: number;
+  enAlerta: number; // agotado + crítico + bajo
+  sinIniciar: number;
+};
+
+const DIAS_CONSUMO = 14; // ventana para la media de consumo diario
+
+export async function getInventario(): Promise<Inventario> {
+  const vacio: Inventario = { productos: [], valorTotal: 0, enAlerta: 0, sinIniciar: 0 };
+  const db = getDb();
+  if (!db) return vacio;
+
+  try {
+    return await conPlazo(
+      (async (): Promise<Inventario> => {
+        const desdeConsumo = new Date(Date.now() - DIAS_CONSUMO * 86_400_000);
+        const desde30d = new Date(Date.now() - 30 * 86_400_000);
+
+        const [productos, ventas, entradas, recuentos, primeraVentaFila] = await Promise.all([
+          db.select().from(schema.productos).where(eq(schema.productos.activo, true)).orderBy(asc(schema.productos.nombre)),
+          // Consumo por ventas de la ventana (los movimientos 'venta' son negativos).
+          db
+            .select({
+              productoId: schema.stockMovimientos.productoId,
+              total: sql<string>`coalesce(sum(-${schema.stockMovimientos.cantidad}), 0)`,
+            })
+            .from(schema.stockMovimientos)
+            .where(and(eq(schema.stockMovimientos.tipo, "venta"), gte(schema.stockMovimientos.createdAt, desdeConsumo)))
+            .groupBy(schema.stockMovimientos.productoId),
+          db
+            .select({
+              productoId: schema.stockMovimientos.productoId,
+              ultima: sql<string>`(max(${schema.stockMovimientos.createdAt}) at time zone 'Europe/Madrid')::date::text`,
+            })
+            .from(schema.stockMovimientos)
+            .where(eq(schema.stockMovimientos.tipo, "entrada"))
+            .groupBy(schema.stockMovimientos.productoId),
+          // Recuentos recientes (90 días): el más nuevo por producto + Σ desviación 30d.
+          db
+            .select()
+            .from(schema.stockRecuentos)
+            .where(gte(schema.stockRecuentos.createdAt, new Date(Date.now() - 90 * 86_400_000)))
+            .orderBy(desc(schema.stockRecuentos.createdAt)),
+          // Desde cuándo hay ventas registradas: al arrancar el motor no se
+          // divide entre 14 días que no existen (inflaría la cobertura).
+          db
+            .select({ primera: sql<string | null>`min(${schema.stockMovimientos.createdAt})::text` })
+            .from(schema.stockMovimientos)
+            .where(eq(schema.stockMovimientos.tipo, "venta")),
+        ]);
+
+        const primeraVenta = primeraVentaFila[0]?.primera ? new Date(primeraVentaFila[0].primera) : null;
+        const diasVentana = primeraVenta
+          ? Math.min(DIAS_CONSUMO, Math.max(1, Math.ceil((Date.now() - primeraVenta.getTime()) / 86_400_000)))
+          : DIAS_CONSUMO;
+
+        const consumoDe = new Map(ventas.map((v) => [v.productoId, Number(v.total)]));
+        const entradaDe = new Map(entradas.map((e) => [e.productoId, e.ultima]));
+        const ultimoRecuentoDe = new Map<string, { fecha: string; desviacion: number }>();
+        const desv30dDe = new Map<string, number>();
+        const diaMadrid = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Madrid" });
+        for (const r of recuentos) {
+          if (!ultimoRecuentoDe.has(r.productoId)) {
+            ultimoRecuentoDe.set(r.productoId, {
+              fecha: fechaLegible(diaMadrid.format(r.createdAt)),
+              desviacion: Number(r.desviacion),
+            });
+          }
+          if (r.createdAt >= desde30d) {
+            desv30dDe.set(r.productoId, (desv30dDe.get(r.productoId) ?? 0) + Number(r.desviacion));
+          }
+        }
+
+        const filas: ProductoInventario[] = productos.map((p) => {
+          const stock = p.stock !== null ? Number(p.stock) : null;
+          const consumoDia = (consumoDe.get(p.id) ?? 0) / diasVentana;
+          const cobertura = stock !== null && consumoDia > 0 ? stock / consumoDia : null;
+          const precio = p.ultimoPrecio !== null ? Number(p.ultimoPrecio) : null;
+          const estado: EstadoStock =
+            stock === null
+              ? "sin_iniciar"
+              : stock <= 0
+                ? "agotado"
+                : cobertura !== null && cobertura <= 2
+                  ? "critico"
+                  : cobertura !== null && cobertura <= 5
+                    ? "bajo"
+                    : "ok";
+          return {
+            id: p.id,
+            nombre: p.nombre,
+            familia: p.familia,
+            unidad: p.unidad,
+            stock,
+            valor: stock !== null && stock > 0 && precio !== null ? stock * precio : null,
+            consumoDia,
+            cobertura,
+            ultimaEntrada: entradaDe.has(p.id) ? fechaLegible(entradaDe.get(p.id)!) : null,
+            ultimoRecuento: ultimoRecuentoDe.get(p.id) ?? null,
+            desviacion30d: desv30dDe.get(p.id) ?? 0,
+            estado,
+          };
+        });
+
+        return {
+          productos: filas,
+          valorTotal: filas.reduce((a, f) => a + (f.valor ?? 0), 0),
+          enAlerta: filas.filter((f) => f.estado === "agotado" || f.estado === "critico" || f.estado === "bajo").length,
+          sinIniciar: filas.filter((f) => f.estado === "sin_iniciar").length,
+        };
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getInventario", e);
+    return vacio;
+  }
+}

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, gte, lt, sql, sum } from "drizzle-orm";
 import { conPlazo, getDb, resetDb, schema } from "@/lib/db";
+import { registrarSalidaStock } from "@/lib/stock/motor";
 
 type Resultado = { ok: boolean; error?: string; id?: string };
 
@@ -239,6 +240,17 @@ export async function registrarPago(
         })
         .where(eq(schema.tickets.id, ticketId)),
     );
+
+    // Stock: descuenta los ingredientes vendidos según el escandallo de cada
+    // plato. Best-effort e idempotente (índice único por ticket+producto): si
+    // falla, el cobro NO se rompe — el recuento lo corrige después.
+    try {
+      await registrarSalidaStock(db, ticketId);
+      revalidatePath("/inventario");
+    } catch (e) {
+      console.error("[registrarPago] stock no descontado:", e instanceof Error ? e.message : e);
+      resetDb(); // socket posiblemente zombi: que el resto del cobro reconecte
+    }
 
     // Ventas del día = suma de todos los tickets cobrados hoy (origen tpv).
     const [suma] = await conPlazo(

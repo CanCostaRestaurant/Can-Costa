@@ -23,10 +23,10 @@ const ACCESO: Record<RolUsuario, { permite: string[]; bloquea?: string[]; inicio
   admin: null,
   documentos: { permite: ["/documentos"], inicio: "/documentos" },
   gestor: {
-    permite: ["/", "/dashboard", "/ventas", "/caja", "/facturacion", "/documentos", "/banco", "/productos", "/proveedores", "/incidencias", "/conciliacion", "/personal"],
+    permite: ["/", "/dashboard", "/ventas", "/caja", "/facturacion", "/documentos", "/banco", "/productos", "/inventario", "/proveedores", "/incidencias", "/conciliacion", "/personal"],
     inicio: "/dashboard",
   },
-  chef: { permite: ["/escandallos", "/productos", "/cocina"], inicio: "/escandallos" },
+  chef: { permite: ["/escandallos", "/productos", "/inventario", "/cocina"], inicio: "/escandallos" },
   // Modo tablet: cobrar (TPV), el día (Ventas), cerrar la caja (Caja) y
   // emitir factura a quien la pida (Facturación). Pero NO editar el plano
   // del local (/tpv/mesas): eso es configuración, no para camareros.
