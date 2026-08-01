@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Apple,
   Boxes,
+  ClipboardList,
   BookUser,
   CalendarDays,
   ChartColumn,
@@ -41,8 +42,8 @@ const ETIQUETA_ROL: Record<RolUsuario, string> = {
 function visiblePara(rol: RolUsuario, href: string): boolean {
   if (rol === "admin") return true;
   if (rol === "documentos") return href === "/documentos";
-  if (rol === "chef") return ["/escandallos", "/productos", "/inventario", "/cocina"].includes(href);
-  if (rol === "tpv") return ["/tpv", "/cocina", "/ventas", "/caja"].includes(href); // (usa BarraTablet, esto es red de seguridad)
+  if (rol === "chef") return ["/escandallos", "/productos", "/inventario", "/cocina", "/briefing"].includes(href);
+  if (rol === "tpv") return ["/tpv", "/cocina", "/briefing", "/ventas", "/caja"].includes(href); // (usa BarraTablet, esto es red de seguridad)
   // gestor: consulta de negocio y gastos, sin TPV/reservas/clientes
   return !["/tpv", "/reservas", "/clientes"].includes(href);
 }
@@ -63,6 +64,7 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
     items: [
       { href: "/tpv", label: "TPV", icon: Tablet },
       { href: "/cocina", label: "Cocina", icon: Flame, chip: "nuevo" },
+      { href: "/briefing", label: "Briefing", icon: ClipboardList, chip: "nuevo" },
       { href: "/ventas", label: "Ventas", icon: Coins },
       { href: "/caja", label: "Caja", icon: Wallet },
       { href: "/reservas", label: "Reservas", icon: CalendarDays },

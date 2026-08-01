@@ -115,11 +115,14 @@ body {
     margin: 0 !important;
     padding: 0 !important;
   }
-  body * {
+  /* Solo cuando se imprime un RECIBO se oculta todo lo demás: el resto de
+     páginas (p. ej. el briefing en A4) se imprimen normales — inyectan su
+     propia @page para anular el tamaño de 80mm. */
+  body:has(#recibo) * {
     visibility: hidden;
   }
-  #recibo,
-  #recibo * {
+  body:has(#recibo) #recibo,
+  body:has(#recibo) #recibo * {
     visibility: visible;
   }
   #recibo {

@@ -3158,3 +3158,173 @@ export async function getInventario(): Promise<Inventario> {
     return vacio;
   }
 }
+
+// ---------------------------------------------------------------------
+// Briefing diario (reunión pre-servicio)
+// ---------------------------------------------------------------------
+
+export type GrupoBriefing = {
+  hora: string;
+  nombre: string;
+  comensales: number;
+  notas: string | null;
+  restricciones: string | null; // alergias/intolerancias de la ficha del cliente
+};
+
+// Sin fotoUrl a propósito: las fotos son data-URLs base64 y embarcarlas en el
+// listado dispararía el payload (regla del repo: base64 nunca en listados).
+export type FichaPlato = {
+  id: string;
+  nombre: string;
+  emoji: string;
+  tipo: "entrante" | "principal" | "postre" | "bebida" | "otro";
+  pvp: number | null;
+  ingredientes: string[]; // qué lleva (del escandallo), para explicarlo en mesa
+};
+
+export type BriefingDia = {
+  fecha: string;
+  fechaLegible: string; // "sábado 1 de agosto"
+  datos: DatosBriefingCrudo; // jsonb guardado (o null si aún no hay)
+  fallo: boolean; // la BD no respondió: NO dejar guardar (machacaría el día)
+  guardadoPor: string | null;
+  guardadoEl: string | null; // "1 ago, 12:05"
+  reservas: { total: number; comidaPax: number; cenaPax: number; grupos: GrupoBriefing[] };
+  stock: { agotados: string[]; pocos: { nombre: string; cobertura: number | null }[] };
+  fichas: FichaPlato[];
+};
+
+// El shape fino vive en lib/briefing/tipos.ts; aquí viaja el jsonb tal cual.
+export type DatosBriefingCrudo = unknown;
+
+export async function getBriefingDia(fecha: string): Promise<BriefingDia> {
+  // Dentro del try del llamador NO: aquí mismo, con red — una fecha que pase
+  // el regex pero no sea de calendario haría lanzar a Intl (RangeError).
+  let fechaLegibleLarga = fecha;
+  try {
+    fechaLegibleLarga = new Intl.DateTimeFormat("es-ES", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(new Date(fecha + "T12:00:00"));
+  } catch {
+    /* se queda la ISO */
+  }
+  const vacio: BriefingDia = {
+    fecha,
+    fechaLegible: fechaLegibleLarga,
+    datos: null,
+    fallo: false,
+    guardadoPor: null,
+    guardadoEl: null,
+    reservas: { total: 0, comidaPax: 0, cenaPax: 0, grupos: [] },
+    stock: { agotados: [], pocos: [] },
+    fichas: [],
+  };
+  const db = getDb();
+  if (!db) return { ...vacio, fallo: true };
+
+  try {
+    return await conPlazo(
+      (async (): Promise<BriefingDia> => {
+        const prepAlias = alias(schema.platos, "prep_briefing");
+        const [briefRow, reservasDia, inventario, platosCarta, ingredientes] = await Promise.all([
+          db.select().from(schema.briefings).where(eq(schema.briefings.fecha, fecha)).limit(1),
+          db
+            .select({ reserva: schema.reservas, restricciones: schema.clientes.restricciones })
+            .from(schema.reservas)
+            .leftJoin(schema.clientes, eq(schema.reservas.clienteId, schema.clientes.id))
+            .where(and(eq(schema.reservas.fecha, fecha), inArray(schema.reservas.estado, ["confirmada", "sentada"])))
+            .orderBy(asc(schema.reservas.hora)),
+          getInventario(),
+          db
+            .select({
+              id: schema.platos.id,
+              nombre: schema.platos.nombre,
+              emoji: schema.platos.emoji,
+              tipoPlato: schema.platos.tipoPlato,
+              pvp: schema.platos.pvp,
+            })
+            .from(schema.platos)
+            .where(and(eq(schema.platos.activo, true), eq(schema.platos.esPreparacion, false)))
+            .orderBy(asc(schema.platos.nombre)),
+          db
+            .select({
+              platoId: schema.platoIngredientes.platoId,
+              descripcion: schema.platoIngredientes.descripcion,
+              producto: schema.productos.nombre,
+              preparacion: prepAlias.nombre,
+              orden: schema.platoIngredientes.orden,
+            })
+            .from(schema.platoIngredientes)
+            .leftJoin(schema.productos, eq(schema.platoIngredientes.productoId, schema.productos.id))
+            .leftJoin(prepAlias, eq(schema.platoIngredientes.preparacionId, prepAlias.id))
+            .orderBy(asc(schema.platoIngredientes.orden)),
+        ]);
+
+        // Reservas: pax por servicio y grupos que hay que conocer (grandes,
+        // con notas o con restricciones alimentarias del cliente).
+        let comidaPax = 0;
+        let cenaPax = 0;
+        const grupos: GrupoBriefing[] = [];
+        for (const { reserva: r, restricciones } of reservasDia) {
+          const hora = r.hora.slice(0, 5);
+          if (hora < "17:00") comidaPax += r.comensales;
+          else cenaPax += r.comensales;
+          if (r.comensales >= 6 || r.notas || restricciones) {
+            grupos.push({ hora, nombre: r.nombre, comensales: r.comensales, notas: r.notas, restricciones });
+          }
+        }
+
+        // Stock → agotados y pocas unidades (solo lo controlado).
+        const agotados = inventario.productos.filter((p) => p.estado === "agotado").map((p) => p.nombre);
+        const pocos = inventario.productos
+          .filter((p) => p.estado === "critico" || p.estado === "bajo")
+          .map((p) => ({ nombre: p.nombre, cobertura: p.cobertura }));
+
+        // Fichas de platos con sus ingredientes (qué lleva cada uno).
+        const ingredientesDe = new Map<string, string[]>();
+        for (const i of ingredientes) {
+          const texto = i.producto ?? i.preparacion ?? i.descripcion;
+          if (!texto) continue;
+          ingredientesDe.set(i.platoId, [...(ingredientesDe.get(i.platoId) ?? []), texto]);
+        }
+        const fichas: FichaPlato[] = platosCarta.map((p) => ({
+          id: p.id,
+          nombre: p.nombre,
+          emoji: p.emoji,
+          tipo: p.tipoPlato,
+          pvp: p.pvp !== null ? Number(p.pvp) : null,
+          ingredientes: ingredientesDe.get(p.id) ?? [],
+        }));
+
+        const brief = briefRow[0] ?? null;
+        return {
+          fecha,
+          fechaLegible: fechaLegibleLarga,
+          datos: brief?.datos ?? null,
+          fallo: false,
+          guardadoPor: brief?.actualizadoPor ?? null,
+          guardadoEl: brief
+            ? new Intl.DateTimeFormat("es-ES", {
+                timeZone: "Europe/Madrid",
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              }).format(brief.updatedAt)
+            : null,
+          reservas: { total: reservasDia.length, comidaPax, cenaPax, grupos },
+          stock: { agotados, pocos },
+          fichas,
+        };
+      })(),
+      12_000,
+    );
+  } catch (e) {
+    logFallo("getBriefingDia", e);
+    // fallo=true: la página avisa y BLOQUEA el guardado — si no, un timeout
+    // transitorio pintaría la plantilla vacía y "Guardar" machacaría el día.
+    return { ...vacio, fallo: true };
+  }
+}

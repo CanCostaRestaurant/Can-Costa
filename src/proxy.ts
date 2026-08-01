@@ -23,14 +23,14 @@ const ACCESO: Record<RolUsuario, { permite: string[]; bloquea?: string[]; inicio
   admin: null,
   documentos: { permite: ["/documentos"], inicio: "/documentos" },
   gestor: {
-    permite: ["/", "/dashboard", "/ventas", "/caja", "/facturacion", "/documentos", "/banco", "/productos", "/inventario", "/proveedores", "/incidencias", "/conciliacion", "/personal"],
+    permite: ["/", "/dashboard", "/ventas", "/caja", "/facturacion", "/documentos", "/banco", "/productos", "/inventario", "/proveedores", "/incidencias", "/conciliacion", "/personal", "/briefing"],
     inicio: "/dashboard",
   },
-  chef: { permite: ["/escandallos", "/productos", "/inventario", "/cocina"], inicio: "/escandallos" },
-  // Modo tablet: cobrar (TPV), el día (Ventas), cerrar la caja (Caja) y
-  // emitir factura a quien la pida (Facturación). Pero NO editar el plano
-  // del local (/tpv/mesas): eso es configuración, no para camareros.
-  tpv: { permite: ["/tpv", "/cocina", "/ventas", "/caja", "/facturacion"], bloquea: ["/tpv/mesas"], inicio: "/tpv" },
+  chef: { permite: ["/escandallos", "/productos", "/inventario", "/cocina", "/briefing"], inicio: "/escandallos" },
+  // Modo tablet: cobrar (TPV), el día (Ventas), cerrar la caja (Caja),
+  // emitir factura a quien la pida (Facturación) y LEER el briefing del día.
+  // Pero NO editar el plano del local (/tpv/mesas): eso es configuración.
+  tpv: { permite: ["/tpv", "/cocina", "/briefing", "/ventas", "/caja", "/facturacion"], bloquea: ["/tpv/mesas"], inicio: "/tpv" },
 };
 
 const empataPrefijo = (p: string, pathname: string) =>

@@ -50,6 +50,9 @@ export function FacturaView({ factura }: { factura: FacturaVenta }) {
 
   return (
     <section className="anim-in mx-auto max-w-3xl">
+      {/* El CSS global de impresión es del ticket térmico (80mm): la factura
+          declara su propia @page A4 (gana la cascada por orden en el DOM). */}
+      <style>{"@media print { @page { size: A4; margin: 12mm; } }"}</style>
       {/* Barra de acciones (no se imprime) */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
         <button

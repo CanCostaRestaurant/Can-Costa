@@ -647,6 +647,20 @@ export const precios = pgTable(
 // El stock actual vive denormalizado en productos.stock (NULL = sin inicializar).
 // ---------------------------------------------------------------------
 
+// ---------------------------------------------------------------------
+// briefings  (reunión pre-servicio digital: una fila por día; las secciones
+// editables van en jsonb — el shape vive en lib/briefing/tipos.ts. Lo AUTO
+// —reservas, agotados por stock, fichas de platos— se calcula en vivo.)
+// ---------------------------------------------------------------------
+
+export const briefings = pgTable("briefings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  fecha: date("fecha").notNull().unique(),
+  datos: jsonb("datos").notNull(),
+  actualizadoPor: text("actualizado_por"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const stockMovTipoEnum = pgEnum("stock_mov_tipo", ["entrada", "venta", "ajuste", "merma"]);
 
 export const stockRecuentos = pgTable(

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Coins, FileText, Flame, LogOut, Smartphone, Tablet, Wallet } from "lucide-react";
+import { ClipboardList, Coins, FileText, Flame, LogOut, Smartphone, Tablet, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { cerrarSesion } from "@/app/login/actions";
 
@@ -18,6 +18,7 @@ export function BarraTablet({ nombre }: { nombre: string }) {
     { href: "/tpv/comandero", etiqueta: "Comandero", icono: Smartphone, soloMovil: true },
     { href: "/tpv", etiqueta: "TPV", icono: Tablet },
     { href: "/cocina", etiqueta: "Cocina", icono: Flame },
+    { href: "/briefing", etiqueta: "Briefing", icono: ClipboardList },
     { href: "/ventas", etiqueta: "Ventas", icono: Coins },
     { href: "/caja", etiqueta: "Caja", icono: Wallet },
     { href: "/facturacion", etiqueta: "Facturas", icono: FileText },
