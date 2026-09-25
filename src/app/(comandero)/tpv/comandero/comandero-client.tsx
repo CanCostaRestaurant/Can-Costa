@@ -10,8 +10,8 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Flame, Minus, NotebookPen, Plus, ReceiptText, ShoppingBag, Users, X } from "lucide-react";
 import { type MapaMesasTpv, type MesaEstado, type PlatoTpv, type TicketDetalle } from "@/lib/db/queries";
 import { cn, eur } from "@/lib/utils";
-import { abrirTicket, cambiarComensales } from "../actions";
-import { enviarACocina, fijarLinea, fijarNotaLinea } from "../comanda-actions";
+import { abrirTicket, cambiarComensales } from "@/app/(app)/tpv/actions";
+import { enviarACocina, fijarLinea, fijarNotaLinea } from "@/app/(app)/tpv/comanda-actions";
 
 // ═══════════════════════════ Pantalla 1: MESAS ═══════════════════════════
 
@@ -331,8 +331,11 @@ export function ComanderoComanda({ ticket, platos }: { ticket: TicketDetalle; pl
   const [catActiva, setCatActiva] = useState(0);
   const cantidadDe = (p: PlatoTpv) => lineas.find((l) => l.key === claveDe(p.id, p.nombre, p.pvp ?? 0))?.cantidad ?? 0;
 
+  // SIN anim-in: su transform convierte la sección en el bloque contenedor de
+  // los `fixed` y la barra de Enviar / la hoja de comanda flotaban a media
+  // pantalla en vez de ir pegadas abajo.
   return (
-    <section className="anim-in mx-auto max-w-lg pb-28">
+    <section className="mx-auto max-w-lg pb-28">
       {/* ── Cabecera ── */}
       <div className="mb-3 flex items-center justify-between gap-2">
         <button
