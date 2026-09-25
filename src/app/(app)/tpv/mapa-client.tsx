@@ -50,9 +50,17 @@ export function MapaClient({ mapa, esTablet = false }: { mapa: MapaMesasTpv; esT
 
   const [vista, setVista] = useState<"plano" | "lista">("plano");
   useEffect(() => {
+    // En un MÓVIL el TPV es el comandero: se salta allí. Solo se queda el
+    // TPV completo si se pidió a propósito (?tablet=1 desde el menú del
+    // comandero; se recuerda mientras dure la pestaña).
+    const esMovil = window.innerWidth < 768;
+    if (new URLSearchParams(window.location.search).has("tablet")) window.sessionStorage.setItem("tpv-forzado", "1");
+    if (esMovil && !window.sessionStorage.getItem("tpv-forzado")) {
+      router.replace("/tpv/comandero");
+      return;
+    }
     // En móvil la LISTA es la vista cómoda por defecto (el plano está
     // pensado para la tablet en horizontal); se puede cambiar igualmente.
-    const esMovil = window.innerWidth < 768;
     const guardada = window.localStorage.getItem("tpv-vista");
     if (guardada === "lista" || guardada === "plano") setVista(guardada);
     else if (colocadas.length === 0 || esMovil) setVista("lista");

@@ -864,12 +864,14 @@ export type MesaEstado = {
   posX: number | null;
   posY: number | null;
   activo: boolean;
-  ticket: { id: string; total: number; comensales: number | null; minutos: number } | null;
+  // porEnviar: unidades marcadas y aún sin enviar a cocina (sin bebidas) —
+  // el comandero avisa de la mesa "olvidada".
+  ticket: { id: string; total: number; comensales: number | null; minutos: number; porEnviar: number } | null;
 };
 
 export type MapaMesasTpv = {
   zonas: { zona: string; titulo: string; mesas: MesaEstado[] }[];
-  paraLlevar: { id: string; total: number; minutos: number }[];
+  paraLlevar: { id: string; total: number; minutos: number; porEnviar: number }[];
 };
 
 const TITULOS_ZONA: Record<string, string> = { sala: "Sala", terraza: "Terraza", barra: "Barra" };
@@ -886,16 +888,39 @@ export async function getMapaMesas(): Promise<MapaMesasTpv> {
   try {
     return await conPlazo(
       (async (): Promise<MapaMesasTpv> => {
-        const [filasMesas, abiertos, sumas] = await Promise.all([
+        const [filasMesas, abiertos, sumas, lineasAbiertas] = await Promise.all([
           db.select().from(schema.mesas).where(eq(schema.mesas.activo, true)).orderBy(asc(schema.mesas.orden)),
           db.select().from(schema.tickets).where(eq(schema.tickets.estado, "abierto")),
           db
             .select({ ticketId: schema.ticketLineas.ticketId, suma: sum(schema.ticketLineas.total) })
             .from(schema.ticketLineas)
             .groupBy(schema.ticketLineas.ticketId),
+          // Líneas de los tickets abiertos con el tipo del plato: lo que
+          // supera lo enviado y no es bebida está pendiente de cocina.
+          db
+            .select({
+              ticketId: schema.ticketLineas.ticketId,
+              cantidad: schema.ticketLineas.cantidad,
+              enviado: schema.ticketLineas.enviado,
+              tipo: schema.platos.tipoPlato,
+            })
+            .from(schema.ticketLineas)
+            .leftJoin(schema.platos, eq(schema.ticketLineas.platoId, schema.platos.id))
+            .where(
+              inArray(
+                schema.ticketLineas.ticketId,
+                db.select({ id: schema.tickets.id }).from(schema.tickets).where(eq(schema.tickets.estado, "abierto")),
+              ),
+            ),
         ]);
 
         const sumaPorTicket = new Map(sumas.map((s) => [s.ticketId, s.suma ? Number(s.suma) : 0]));
+        const porEnviarPorTicket = new Map<string, number>();
+        for (const l of lineasAbiertas) {
+          if (l.tipo === "bebida") continue;
+          const delta = l.cantidad - l.enviado;
+          if (delta > 0) porEnviarPorTicket.set(l.ticketId, (porEnviarPorTicket.get(l.ticketId) ?? 0) + delta);
+        }
         const abiertoPorMesa = new Map(abiertos.filter((t) => t.mesaId).map((t) => [t.mesaId!, t]));
 
         const zonas = ["sala", "terraza", "barra"]
@@ -921,6 +946,7 @@ export async function getMapaMesas(): Promise<MapaMesasTpv> {
                         total: sumaPorTicket.get(t.id) ?? 0,
                         comensales: t.comensales,
                         minutos: minutosDesde(t.abiertoAt),
+                        porEnviar: porEnviarPorTicket.get(t.id) ?? 0,
                       }
                     : null,
                 };
@@ -930,7 +956,12 @@ export async function getMapaMesas(): Promise<MapaMesasTpv> {
 
         const paraLlevar = abiertos
           .filter((t) => !t.mesaId)
-          .map((t) => ({ id: t.id, total: sumaPorTicket.get(t.id) ?? 0, minutos: minutosDesde(t.abiertoAt) }));
+          .map((t) => ({
+            id: t.id,
+            total: sumaPorTicket.get(t.id) ?? 0,
+            minutos: minutosDesde(t.abiertoAt),
+            porEnviar: porEnviarPorTicket.get(t.id) ?? 0,
+          }));
 
         return { zonas, paraLlevar };
       })(),
