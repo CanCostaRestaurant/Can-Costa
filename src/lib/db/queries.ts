@@ -1,4 +1,4 @@
-// Capa de consultas de Can Costa.
+// Capa de consultas de Taula 7.
 // - Sin DATABASE_URL configurada → datos mock (arranque/desarrollo).
 // - Con BD pero caída o colgada (p. ej. incidencia de Supabase) → plazo duro
 //   de 8s por consulta (conPlazo) + estados VACÍOS y console.error: la app
@@ -1892,7 +1892,7 @@ export async function getRecibo(id: string): Promise<Recibo | null> {
           ivaPct,
           total,
           local: {
-            nombre: ajustes.nombreFiscal || "Can Costa",
+            nombre: ajustes.nombreFiscal || "Taula 7",
             cif: ajustes.cif,
             direccion: ajustes.direccion,
             telefono: ajustes.telefono,
@@ -1999,7 +1999,7 @@ export async function getFacturaVenta(id: string): Promise<FacturaVenta | null> 
               }).format(f.enviadaAt)
             : null,
           local: {
-            nombre: ajustes.nombreFiscal || "Can Costa",
+            nombre: ajustes.nombreFiscal || "Taula 7",
             cif: ajustes.cif,
             direccion: ajustes.direccion,
             telefono: ajustes.telefono,

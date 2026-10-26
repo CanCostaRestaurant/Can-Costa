@@ -61,7 +61,7 @@ function renderTicket(c: typeof schema.comandas.$inferSelect): string {
   }).format(c.createdAt);
 
   const lineas: string[] = [
-    "COCINA - CAN COSTA",
+    "COCINA - TAULA 7",
     RAYA,
     `${sinAcentos(c.mesaNombre).toUpperCase()}   ·   ${c.pase}o PASE   ·   ${hora}`,
     RAYA,

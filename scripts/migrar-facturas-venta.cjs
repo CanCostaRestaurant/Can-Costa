@@ -1,5 +1,5 @@
 // Facturas EMITIDAS al cliente (facturas_venta) + datos fiscales del cliente.
-// A diferencia de `facturas` (compras/gasto), estas son las que Can Costa emite
+// A diferencia de `facturas` (compras/gasto), estas son las que Taula 7 emite
 // cuando un cliente pide factura. Numeracion correlativa sin huecos por serie=ano.
 // Idempotente. Ejecutar: node scripts/migrar-facturas-venta.cjs
 require("dotenv").config({ path: ".env.local" });

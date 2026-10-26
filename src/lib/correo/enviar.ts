@@ -15,7 +15,7 @@ export async function enviarCorreo(datos: {
   html: string;
   texto?: string; // versión en texto plano (multipart/alternative → menos spam)
   responderA?: string; // Reply-To (a dónde van las respuestas del cliente)
-  nombreRemitente?: string; // "Can Costa SL" — el correo es el del buzón
+  nombreRemitente?: string; // "Taula 7 SL" — el correo es el del buzón
   adjuntos?: Adjunto[];
 }): Promise<ResultadoCorreo> {
   const usuario = process.env.IMAP_USER;

@@ -19,7 +19,7 @@ export type DatosBriefing = {
   motivacion: string;
 };
 
-// Plantilla del primer día (textos base de la hoja de papel de Can Costa).
+// Plantilla del primer día (textos base de la hoja de papel de Taula 7).
 export function briefingVacio(): DatosBriefing {
   return {
     responsable: "",

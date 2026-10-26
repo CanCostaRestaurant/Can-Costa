@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
     );
 
     const local = {
-      nombre: ajustes.nombreFiscal || "Can Costa",
+      nombre: ajustes.nombreFiscal || "Taula 7",
       cif: ajustes.cif,
       direccion: ajustes.direccion,
       telefono: ajustes.telefono,

@@ -1,4 +1,4 @@
--- ⚠️ LIMPIEZA DE DATOS DEMO de Can Costa. NO ejecutar hasta que el
+-- ⚠️ LIMPIEZA DE DATOS DEMO de Taula 7. NO ejecutar hasta que el
 -- restaurante empiece con datos reales. Borra SOLO las filas sembradas
 -- (UUIDs fijos de los seeds) y lo que cuelga de ellas; lo creado por el
 -- usuario (validaciones posteriores, ventas manuales, platos nuevos…)

@@ -58,7 +58,7 @@ const GRUPOS: { titulo: string; items: Item[] }[] = [
       { href: "/escandallos", label: "Escandallos", icon: ChefHat },
     ],
   },
-  // Extras de Can Costa que no existen en Haddock, en su propio apartado.
+  // Extras de Taula 7 que no existen en Haddock, en su propio apartado.
   {
     titulo: "Gestión",
     items: [
@@ -99,11 +99,11 @@ export function Sidebar({ nombre, rol }: { nombre: string; rol: RolUsuario }) {
   return (
     <aside className="sticky top-0 flex h-screen w-[216px] shrink-0 flex-col overflow-y-auto border-r border-line px-3.5 py-5 max-md:w-16 print:hidden">
       <div className="flex items-center gap-2.5 px-2.5 pb-4">
-        <div className="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-brand font-display text-[17px] font-extrabold text-white">
-          C
+        <div className="grid size-[34px] shrink-0 place-items-center rounded-[11px] bg-brand font-display text-[14px] font-extrabold tracking-tight text-white">
+          T7
         </div>
         <div className="font-display text-base font-bold tracking-tight max-md:hidden">
-          Can Costa
+          Taula 7
           <small className="block font-body text-[11px] font-medium text-ink-soft">food cost &amp; compras</small>
         </div>
       </div>

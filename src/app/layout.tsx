@@ -15,12 +15,12 @@ const sans = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Can Costa · Food cost y compras",
-  description: "Gestión de compras, precios y escandallos de Can Costa",
+  title: "Taula 7 · Food cost y compras",
+  description: "Gestión de compras, precios y escandallos de Taula 7",
   // Instalable en la tablet como app (iPad usa estas etiquetas, no el manifest).
   appleWebApp: {
     capable: true,
-    title: "Can Costa TPV",
+    title: "Taula 7 TPV",
     statusBarStyle: "default",
   },
   icons: {

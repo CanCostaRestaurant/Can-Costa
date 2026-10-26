@@ -125,7 +125,7 @@ export async function extraerFactura(opciones: {
           },
         } as Anthropic.ContentBlockParam);
 
-  const prompt = `Eres el lector de albaranes y facturas de Can Costa, un restaurante de Barcelona.
+  const prompt = `Eres el lector de albaranes y facturas de Taula 7, un restaurante de Barcelona.
 Extrae la cabecera y TODAS las líneas de producto del documento adjunto.
 
 Catálogo de productos (mapea cada línea a un id SOLO si la correspondencia es clara):

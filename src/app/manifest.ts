@@ -4,9 +4,9 @@ import type { MetadataRoute } from "next";
 // pantalla completa directamente en el TPV, como una app nativa de cobro.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Can Costa TPV",
-    short_name: "Can Costa",
-    description: "TPV y ventas de Can Costa",
+    name: "Taula 7 TPV",
+    short_name: "Taula 7",
+    description: "TPV y ventas de Taula 7",
     start_url: "/tpv",
     display: "standalone",
     orientation: "landscape",

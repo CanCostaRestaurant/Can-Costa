@@ -64,7 +64,7 @@ export async function extraerExtracto(opciones: {
           },
         } as Anthropic.ContentBlockParam);
 
-  const prompt = `Eres el lector de extractos bancarios de Can Costa, un restaurante de Barcelona.
+  const prompt = `Eres el lector de extractos bancarios de Taula 7, un restaurante de Barcelona.
 Extrae TODOS los movimientos del extracto adjunto (una fila por movimiento).
 
 Proveedores conocidos (para identificar a quién se paga en cada cargo):

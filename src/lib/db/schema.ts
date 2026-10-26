@@ -1,5 +1,5 @@
 // =====================================================================
-// Schema Drizzle — Can Costa (food cost & compras)
+// Schema Drizzle — Taula 7 (food cost & compras)
 //
 // Fase 1: COMPRAS
 //   - proveedores      (maestro de proveedores)

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // PWA propia: instalar "Añadir a pantalla de inicio" DESDE esta página crea
 // la app "Comandero" (vertical, arranca aquí) — no la del TPV de tablet.
 export const metadata: Metadata = {
-  title: "Comandero · Can Costa",
+  title: "Comandero · Taula 7",
   manifest: "/manifest-comandero.webmanifest",
   appleWebApp: { capable: true, title: "Comandero", statusBarStyle: "default" },
 };

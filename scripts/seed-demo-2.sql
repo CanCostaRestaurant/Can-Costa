@@ -1,4 +1,4 @@
--- Seed demo v2 Can Costa: facturas 4 semanas + líneas por revisar + ventas diarias.
+-- Seed demo v2 Taula 7: facturas 4 semanas + líneas por revisar + ventas diarias.
 -- Requiere la migración 0001 (tabla ventas_dia) aplicada.
 -- Idempotente por UUIDs fijos; OJO: re-ejecutarlo resetea el último precio de
 -- merluza/aguacate/tomate/atún (deshace validaciones de demo).

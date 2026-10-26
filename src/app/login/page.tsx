@@ -17,16 +17,16 @@ export default function LoginPage() {
     <main className="flex min-h-screen">
       {/* ── Panel de marca (portada de la carta) ── */}
       <aside className="relative hidden w-[44%] shrink-0 flex-col justify-between overflow-hidden bg-brand p-10 text-white md:flex">
-        {/* C gigante de fondo, como marca al agua */}
+        {/* T7 gigante de fondo, como marca al agua */}
         <span
           aria-hidden
-          className="pointer-events-none absolute -right-24 -bottom-40 font-display text-[34rem] leading-none font-extrabold text-white/10 select-none"
+          className="pointer-events-none absolute -right-24 -bottom-40 font-display text-[30rem] leading-none font-extrabold tracking-tighter text-white/10 select-none"
         >
-          C
+          T7
         </span>
 
         <div className="anim-in font-display text-lg font-bold tracking-tight">
-          Can Costa
+          Taula 7
           <small className="block font-body text-[12px] font-medium text-white/70">
             food cost &amp; compras
           </small>
@@ -65,11 +65,11 @@ export default function LoginPage() {
         <div className="w-full max-w-[360px]">
           {/* Cabecera compacta (móvil, donde no se ve el panel) */}
           <div className="anim-in mb-8 flex items-center gap-3 md:hidden">
-            <div className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-brand font-display text-xl font-extrabold text-white">
-              C
+            <div className="grid size-11 shrink-0 place-items-center rounded-[13px] bg-brand font-display text-lg font-extrabold tracking-tight text-white">
+              T7
             </div>
             <div className="font-display text-xl font-bold tracking-tight">
-              Can Costa
+              Taula 7
               <small className="block font-body text-[11.5px] font-medium text-ink-soft">
                 food cost &amp; compras
               </small>

@@ -73,7 +73,7 @@ export function InventarioClient({ datos }: { datos: Inventario }) {
           `${prov}:\n` + items.map((p) => `  - ${cant(p.sugerenciaPedido)} ${p.unidad} ${p.nombre}`).join("\n"),
       )
       .join("\n");
-    navigator.clipboard.writeText(`Pedido Can Costa\n${texto}`).then(() => {
+    navigator.clipboard.writeText(`Pedido Taula 7\n${texto}`).then(() => {
       setCopiado(true);
       setTimeout(() => setCopiado(false), 1600);
     });

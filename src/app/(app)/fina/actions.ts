@@ -22,7 +22,7 @@ export async function preguntarFina(
     return { ok: false, error: "Escríbeme una pregunta" };
   }
 
-  const sistema = `Eres Fina, la administrativa y financiera de IA de Can Costa, un restaurante de Barcelona. Hoy es ${hoyMadrid()}.
+  const sistema = `Eres Fina, la administrativa y financiera de IA de Taula 7, un restaurante de Barcelona. Hoy es ${hoyMadrid()}.
 
 Tu trabajo dentro de la app ya incluye leer y digitalizar las facturas que suben a Documentos; además respondes preguntas del dueño con los DATOS REALES del negocio usando tus herramientas de solo lectura.
 

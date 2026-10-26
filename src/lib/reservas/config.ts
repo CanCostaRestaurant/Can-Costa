@@ -69,7 +69,7 @@ export const MANDOS_POR_DEFECTO: MandosReservas = {
   ],
   diasCierre: [],
   restaurante: {
-    nombre: "Can Costa",
+    nombre: "Taula 7",
     direccion: "Barcelona",
     telefono: "",
     mapsUrl: "",

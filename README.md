@@ -1,11 +1,15 @@
-# Can Costa · CRM del restaurante
+# Taula 7 · CRM del restaurante
 
 Gestión completa de un restaurante en una sola app: food cost y escandallos, compras y proveedores,
 facturas de proveedor leídas con IA, inventario, TPV de sala en tablet, comandero en el móvil,
 pantalla de cocina, reservas, clientes, caja, facturación, personal y un panel con los números.
 
-- **Producción:** https://can-costa.vercel.app
+- **Producción:** https://can-costa.vercel.app · web pública `/web` · reservas `/reservar`
 - **Código:** https://github.com/CanCostaRestaurant/Can-Costa (rama `main`; cada push despliega solo en Vercel)
+
+> El restaurante se llamó **Can Costa** hasta octubre de 2026: el dominio de Vercel, la cuenta de GitHub y el
+> proyecto de Supabase conservan ese nombre. El nombre que ven los clientes (web, reservas, correos) sale de
+> Reservas → Ajustes → "Nombre del restaurante"; los iconos se regeneran con `node scripts/iconos/generar-iconos.mjs`.
 
 ## Stack
 
@@ -62,7 +66,7 @@ pantallas avisan "la base de datos no responde".
 
 ### Base de datos
 
-- **Para seguir con Can Costa:** la base de datos de producción ya tiene el esquema y los datos. Basta con
+- **Para seguir con Taula 7:** la base de datos de producción ya tiene el esquema y los datos. Basta con
   copiar las variables del proyecto de Vercel (Settings → Environment Variables) a `.env.local`.
   Ojo: en local se trabaja contra los datos reales.
 - **Para una copia nueva (otro restaurante o entorno de pruebas):** crear un proyecto en

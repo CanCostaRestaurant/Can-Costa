@@ -1,4 +1,4 @@
--- Seed TPV Can Costa: 12 mesas + tickets demo de HOY (5 cobrados + 2 abiertos).
+-- Seed TPV Taula 7: 12 mesas + tickets demo de HOY (5 cobrados + 2 abiertos).
 -- Requiere la migración 0003. Idempotente por UUIDs fijos.
 
 alter table mesas enable row level security;

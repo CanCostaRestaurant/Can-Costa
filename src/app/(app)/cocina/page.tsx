@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // PWA propia: instalar DESDE esta página en la tablet de cocina crea la app
 // "Cocina" (horizontal, icono carbón, arranca aquí) — el addon del pase.
 export const metadata: Metadata = {
-  title: "Cocina · Can Costa",
+  title: "Cocina · Taula 7",
   manifest: "/manifest-cocina.webmanifest",
   appleWebApp: { capable: true, title: "Cocina", statusBarStyle: "black-translucent" },
   icons: { apple: "/apple-touch-cocina.png" },

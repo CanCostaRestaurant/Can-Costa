@@ -1,4 +1,4 @@
--- Seed demo v3 Can Costa: platos con escandallo (Fase 2).
+-- Seed demo v3 Taula 7: platos con escandallo (Fase 2).
 -- Requiere la migración 0002 (platos, plato_ingredientes).
 -- Idempotente: UUIDs fijos + ON CONFLICT DO NOTHING.
 -- Los ingredientes con producto_id calculan coste VIVO (cantidad × último precio);

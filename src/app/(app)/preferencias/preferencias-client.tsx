@@ -47,7 +47,7 @@ export function PreferenciasClient({ ajustes, usuarios }: { ajustes: Ajustes; us
     <section className="anim-in">
       <PageHead
         titulo="Preferencias"
-        subtitulo="Cómo quieres que opere Can Costa, y quién entra con qué acceso"
+        subtitulo="Cómo quieres que opere Taula 7, y quién entra con qué acceso"
       />
 
       {error && (
@@ -213,7 +213,7 @@ export function PreferenciasClient({ ajustes, usuarios }: { ajustes: Ajustes; us
           <CampoTicket
             etiqueta="Nombre fiscal"
             valor={ajustes.nombreFiscal}
-            placeholder="Can Costa SL"
+            placeholder="Taula 7 SL"
             onGuardar={(v) => ejecutar(() => guardarAjustes({ nombreFiscal: v }))}
           />
           <CampoTicket

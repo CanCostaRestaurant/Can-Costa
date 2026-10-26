@@ -1,4 +1,4 @@
--- Seed de arranque Can Costa (datos demo del mockup).
+-- Seed de arranque Taula 7 (datos demo del mockup).
 -- Idempotente: UUIDs fijos + ON CONFLICT DO NOTHING. Ejecutar en el SQL Editor.
 
 -- ── Proveedores ──────────────────────────────────────────────────────

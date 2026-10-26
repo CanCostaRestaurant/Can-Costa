@@ -26,8 +26,8 @@ export function BarraTablet({ nombre }: { nombre: string }) {
 
   return (
     <header className="sticky top-0 z-40 flex items-center gap-2 border-b border-line bg-paper/90 px-4 py-2 backdrop-blur-sm print:hidden">
-      <div className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-brand font-display text-[15px] font-extrabold text-white">
-        C
+      <div className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-brand font-display text-[14px] font-extrabold tracking-tight text-white">
+        T7
       </div>
 
       <nav className="ml-2 flex min-w-0 gap-1.5 overflow-x-auto">
